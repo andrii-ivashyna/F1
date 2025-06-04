@@ -1,0 +1,21 @@
+# Ignore Python cache and environment
+__pycache__/
+*.pyc
+.env
+
+# Ignore log files
+*.log
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore virtual environment directories
+venv/
+.env/
+
+# Ignore DB files
+*.db
+
+# Ignore JSON files
+*.json
