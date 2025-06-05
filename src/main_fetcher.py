@@ -41,7 +41,7 @@ def main():
     
     fetcher = OpenF1Fetcher(
         years=2024,           # Can be int or list of ints
-        meetings=slice(0, 2)  # Can be int, list of ints, or slice (None for all)
+        meetings=None  # Can be int, list of ints, or slice (None for all)
     )
     
     try:

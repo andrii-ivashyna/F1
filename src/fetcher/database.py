@@ -1,5 +1,5 @@
 """
-Database operations for OpenF1 API Data Fetcher
+Enhanced Database operations for OpenF1 API Data Fetcher
 """
 
 import sqlite3
@@ -16,9 +16,13 @@ class DatabaseManager:
         self.db_path = os.path.join(DATA_FOLDER, db_filename)
         self.init_database()
     
+    def _get_connection(self):
+        """Get a database connection."""
+        return sqlite3.connect(self.db_path)
+    
     def init_database(self):
         """Initialize SQLite database with all required tables."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         # Create progress tracking table
@@ -44,7 +48,7 @@ class DatabaseManager:
         if not data:
             return
             
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -91,7 +95,7 @@ class DatabaseManager:
     
     def is_data_exists(self, table_name: str, key_column: str, key_value: Any) -> bool:
         """Check if data already exists in the table for given key."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -106,7 +110,7 @@ class DatabaseManager:
     
     def get_existing_keys(self, table_name: str, key_column: str) -> List[Any]:
         """Get all existing keys from a table."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -120,7 +124,7 @@ class DatabaseManager:
     
     def get_session_dates(self, session_key: int) -> tuple:
         """Get date_start and date_end for a specific session."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -135,7 +139,7 @@ class DatabaseManager:
     
     def get_drivers_for_session(self, session_key: int) -> List[int]:
         """Get all driver numbers that participated in a specific session."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -147,9 +151,23 @@ class DatabaseManager:
         finally:
             conn.close()
     
+    def get_sessions_for_meeting(self, meeting_key: int) -> List[int]:
+        """Get all session keys for a specific meeting."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT session_key FROM sessions WHERE meeting_key = ?", (meeting_key,))
+            return [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting sessions for meeting {meeting_key}: {e}")
+            return []
+        finally:
+            conn.close()
+    
     def print_summary(self):
         """Print summary of data in database."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         tables = [
