@@ -3,9 +3,6 @@ __pycache__/
 *.pyc
 .env
 
-# Ignore log files
-*.log
-
 # Ignore OS files
 .DS_Store
 Thumbs.db
@@ -17,5 +14,11 @@ venv/
 # Ignore DB files
 *.db
 
+# Ignore log files
+*.log
+
 # Ignore JSON files
 *.json
+
+# Ignore data folder
+data/
