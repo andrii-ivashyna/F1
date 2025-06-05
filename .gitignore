@@ -11,14 +11,5 @@ Thumbs.db
 venv/
 .env/
 
-# Ignore DB files
-*.db
-
-# Ignore log files
-*.log
-
-# Ignore JSON files
-*.json
-
 # Ignore data folder
 data/

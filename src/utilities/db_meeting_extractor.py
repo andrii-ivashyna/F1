@@ -102,7 +102,7 @@ def extract_and_insert_data(source_db_conn, new_db_conn, schema, meeting_id):
 
 def main():
     # --- HARDCODED MEETING ID ---
-    meeting_id = 1230  # Replace with the actual meeting ID you want to extract data for
+    meeting_id = 1229  # Replace with the actual meeting ID you want to extract data for
 
     # --- Constants (can adjust if needed) ---
     source_db = "../../data/f1_data.db"
