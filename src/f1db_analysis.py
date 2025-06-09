@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import threading
 from dataclasses import dataclass, asdict
 
@@ -193,198 +193,72 @@ class F1DatabaseAnalyzer:
         finally:
             conn.close()
     
-    def _calculate_basic_counts(self, series: pd.Series, column_name: str) -> Dict[str, Any]:
-        """Calculate basic count statistics for any column"""
+    def _calculate_stats(self, series: pd.Series, column_name: str, data_type: str) -> Dict[str, Any]:
+        """Unified statistics calculation method"""
         total_count = len(series)
         null_count = series.isna().sum()
         valid_count = total_count - null_count
         
-        return {
+        stats = {
             f"{column_name}_count": total_count,
             f"{column_name}_valid_count": valid_count,
             f"{column_name}_null_count": int(null_count),
             f"{column_name}_null_percentage": round((null_count / total_count) * 100, 2) if total_count > 0 else 0
         }
-    
-    def _calculate_numeric_stats(self, series: pd.Series, column_name: str) -> Dict[str, Any]:
-        """Calculate detailed numeric statistics with proper data type handling"""
-        stats = self._calculate_basic_counts(series, column_name)
         
-        # Convert to numeric, coercing any non-numeric values to NaN
-        try:
-            numeric_series = pd.to_numeric(series, errors='coerce')
-            clean_series = numeric_series.dropna()
-        except Exception as e:
-            logger.warning(f"Could not convert {column_name} to numeric: {e}")
-            clean_series = pd.Series(dtype=float)
-        
-        if clean_series.empty:
-            stats.update({
-                f"{column_name}_mean": None,
-                f"{column_name}_median": None,
-                f"{column_name}_std": None,
-                f"{column_name}_min": None,
-                f"{column_name}_max": None,
-                f"{column_name}_q25": None,
-                f"{column_name}_q75": None
-            })
-        else:
+        if data_type == 'numeric':
             try:
-                stats.update({
-                    f"{column_name}_mean": round(float(clean_series.mean()), 4),
-                    f"{column_name}_median": round(float(clean_series.median()), 4),
-                    f"{column_name}_std": round(float(clean_series.std()), 4),
-                    f"{column_name}_min": float(clean_series.min()),
-                    f"{column_name}_max": float(clean_series.max()),
-                    f"{column_name}_q25": round(float(clean_series.quantile(0.25)), 4),
-                    f"{column_name}_q75": round(float(clean_series.quantile(0.75)), 4)
-                })
+                numeric_series = pd.to_numeric(series, errors='coerce').dropna()
+                if not numeric_series.empty:
+                    stats.update({
+                        f"{column_name}_mean": round(float(numeric_series.mean()), 4),
+                        f"{column_name}_median": round(float(numeric_series.median()), 4),
+                        f"{column_name}_std": round(float(numeric_series.std()), 4),
+                        f"{column_name}_min": float(numeric_series.min()),
+                        f"{column_name}_max": float(numeric_series.max()),
+                        f"{column_name}_q25": round(float(numeric_series.quantile(0.25)), 4),
+                        f"{column_name}_q75": round(float(numeric_series.quantile(0.75)), 4)
+                    })
             except Exception as e:
-                logger.warning(f"Error calculating stats for {column_name}: {e}")
-                stats.update({
-                    f"{column_name}_mean": None,
-                    f"{column_name}_median": None,
-                    f"{column_name}_std": None,
-                    f"{column_name}_min": None,
-                    f"{column_name}_max": None,
-                    f"{column_name}_q25": None,
-                    f"{column_name}_q75": None
-                })
+                logger.warning(f"Error calculating numeric stats for {column_name}: {e}")
+        
+        elif data_type == 'categorical':
+            clean_series = series.dropna()
+            stats[f"{column_name}_unique_count"] = len(clean_series.unique()) if not clean_series.empty else 0
+            
+            # Skip top_values for date and recording_url columns
+            if column_name not in ['date', 'recording_url'] and not clean_series.empty:
+                try:
+                    value_counts = clean_series.value_counts().head(10)
+                    stats[f"{column_name}_top_values"] = {str(k): int(v) for k, v in value_counts.items()}
+                    stats[f"{column_name}_most_common"] = str(value_counts.index[0]) if len(value_counts) > 0 else None
+                except Exception as e:
+                    logger.warning(f"Error calculating top values for {column_name}: {e}")
+        
+        elif data_type == 'boolean':
+            clean_series = series.dropna()
+            if not clean_series.empty:
+                try:
+                    if clean_series.dtype != bool:
+                        clean_series = clean_series.astype(bool)
+                    
+                    true_count = clean_series.sum()
+                    stats.update({
+                        f"{column_name}_true_count": int(true_count),
+                        f"{column_name}_false_count": int(len(clean_series) - true_count),
+                        f"{column_name}_true_percentage": round((true_count / len(clean_series)) * 100, 2)
+                    })
+                except Exception as e:
+                    logger.warning(f"Error calculating boolean stats for {column_name}: {e}")
         
         return stats
     
-    def _calculate_categorical_stats(self, series: pd.Series, column_name: str, top_n: int = 10) -> Dict[str, Any]:
-        """Calculate categorical statistics with filtering for unwanted sections"""
-        stats = self._calculate_basic_counts(series, column_name)
-        
-        clean_series = series.dropna()
-        unique_count = len(clean_series.unique()) if not clean_series.empty else 0
-        
-        # Get top values - but skip for date and recording_url columns
-        top_values = {}
-        most_common = None
-        
-        # Skip top_values and most_common for date and recording_url columns
-        if column_name not in ['date', 'recording_url'] and not clean_series.empty:
-            try:
-                value_counts = clean_series.value_counts().head(top_n)
-                top_values = {str(k): int(v) for k, v in value_counts.items()}
-                most_common = str(value_counts.index[0]) if len(value_counts) > 0 else None
-            except Exception as e:
-                logger.warning(f"Error calculating top values for {column_name}: {e}")
-        
-        stats.update({
-            f"{column_name}_unique_count": unique_count
-        })
-        
-        # Only add top_values and most_common if they exist (not for filtered columns)
-        if top_values:
-            stats[f"{column_name}_top_values"] = top_values
-        if most_common:
-            stats[f"{column_name}_most_common"] = most_common
-        
-        return stats
-    
-    def _calculate_boolean_stats(self, series: pd.Series, column_name: str) -> Dict[str, Any]:
-        """Calculate boolean statistics"""
-        stats = self._calculate_basic_counts(series, column_name)
-        
-        clean_series = series.dropna()
-        if not clean_series.empty:
-            try:
-                # Convert to boolean if needed
-                if clean_series.dtype != bool:
-                    clean_series = clean_series.astype(bool)
-                
-                true_count = clean_series.sum()
-                false_count = len(clean_series) - true_count
-                stats.update({
-                    f"{column_name}_true_count": int(true_count),
-                    f"{column_name}_false_count": int(false_count),
-                    f"{column_name}_true_percentage": round((true_count / len(clean_series)) * 100, 2)
-                })
-            except Exception as e:
-                logger.warning(f"Error calculating boolean stats for {column_name}: {e}")
-                stats.update({
-                    f"{column_name}_true_count": 0,
-                    f"{column_name}_false_count": 0,
-                    f"{column_name}_true_percentage": 0
-                })
-        else:
-            stats.update({
-                f"{column_name}_true_count": 0,
-                f"{column_name}_false_count": 0,
-                f"{column_name}_true_percentage": 0
-            })
-        
-        return stats
-    
-    def analyze_table(self, table_name: str) -> AnalysisResult:
-        """Unified table analysis method"""
-        try:
-            df = self._get_table_sample(table_name)
-            
-            if df.empty:
-                return AnalysisResult(
-                    name=f"{table_name}_statistics",
-                    data={"error": f"No data available in {table_name}"},
-                    metadata={"description": f"Statistical analysis of {table_name} table"}
-                )
-            
-            schema = self.TABLE_SCHEMA.get(table_name, {})
-            analysis = {
-                'dataset_size': len(df),
-                'is_sampled': len(df) == SAMPLE_SIZE,
-            }
-            
-            # Add table-specific insights
-            if table_name in ['car_data', 'location'] and len(df) == SAMPLE_SIZE:
-                analysis['sample_info'] = f"Analyzed {SAMPLE_SIZE} records sampled across multiple sessions"
-            
-            # Process each column type
-            for col_type, columns in schema.items():
-                if col_type == 'skip_detailed':
-                    # Only basic counts for these columns, and skip ID columns
-                    for col in columns:
-                        if col in df.columns and not col.lower().endswith('_id') and col != 'id':
-                            analysis.update(self._calculate_basic_counts(df[col], col))
-                elif col_type == 'numeric':
-                    for col in columns:
-                        if col in df.columns:
-                            analysis.update(self._calculate_numeric_stats(df[col], col))
-                elif col_type == 'categorical':
-                    for col in columns:
-                        if col in df.columns:
-                            analysis.update(self._calculate_categorical_stats(df[col], col))
-                elif col_type == 'boolean':
-                    for col in columns:
-                        if col in df.columns:
-                            analysis.update(self._calculate_boolean_stats(df[col], col))
-            
-            # Add table-specific performance metrics
-            analysis.update(self._calculate_table_specific_metrics(table_name, df))
-            
-            return AnalysisResult(
-                name=f"{table_name}_statistics",
-                data=analysis,
-                metadata={"description": f"Statistical analysis of F1 {table_name} data"}
-            )
-            
-        except Exception as e:
-            logger.error(f"Error analyzing {table_name}: {str(e)}")
-            return AnalysisResult(
-                name=f"{table_name}_statistics",
-                data={"error": f"Analysis failed: {str(e)}"},
-                metadata={"description": f"Failed analysis of {table_name} table"}
-            )
-    
-    def _calculate_table_specific_metrics(self, table_name: str, df: pd.DataFrame) -> Dict[str, Any]:
+    def _get_table_specific_metrics(self, table_name: str, df: pd.DataFrame) -> Dict[str, Any]:
         """Calculate table-specific performance metrics"""
         metrics = {}
         
         try:
             if table_name == 'laps' and 'lap_duration' in df.columns:
-                # Convert to numeric first
                 lap_durations = pd.to_numeric(df['lap_duration'], errors='coerce').dropna()
                 if not lap_durations.empty and lap_durations.mean() > 0:
                     metrics['lap_performance'] = {
@@ -429,8 +303,58 @@ class F1DatabaseAnalyzer:
         
         return metrics
     
-    def get_database_overview(self) -> AnalysisResult:
-        """Get basic database overview"""
+    def analyze_table(self, table_name: str) -> AnalysisResult:
+        """Unified table analysis method"""
+        try:
+            df = self._get_table_sample(table_name)
+            
+            if df.empty:
+                return AnalysisResult(
+                    name=f"{table_name}_statistics",
+                    data={"error": f"No data available in {table_name}"},
+                    metadata={"description": f"Statistical analysis of {table_name} table"}
+                )
+            
+            schema = self.TABLE_SCHEMA.get(table_name, {})
+            analysis = {
+                'dataset_size': len(df),
+                'is_sampled': len(df) == SAMPLE_SIZE,
+            }
+            
+            # Add table-specific insights
+            if table_name in ['car_data', 'location'] and len(df) == SAMPLE_SIZE:
+                analysis['sample_info'] = f"Analyzed {SAMPLE_SIZE} records sampled across multiple sessions"
+            
+            # Process each column type using unified stats method
+            for col_type, columns in schema.items():
+                if col_type == 'skip_detailed':
+                    for col in columns:
+                        if col in df.columns and not col.lower().endswith('_id') and col != 'id':
+                            analysis.update(self._calculate_stats(df[col], col, 'basic'))
+                elif col_type in ['numeric', 'categorical', 'boolean']:
+                    for col in columns:
+                        if col in df.columns:
+                            analysis.update(self._calculate_stats(df[col], col, col_type))
+            
+            # Add table-specific performance metrics
+            analysis.update(self._get_table_specific_metrics(table_name, df))
+            
+            return AnalysisResult(
+                name=f"{table_name}_statistics",
+                data=analysis,
+                metadata={"description": f"Statistical analysis of F1 {table_name} data"}
+            )
+            
+        except Exception as e:
+            logger.error(f"Error analyzing {table_name}: {str(e)}")
+            return AnalysisResult(
+                name=f"{table_name}_statistics",
+                data={"error": f"Analysis failed: {str(e)}"},
+                metadata={"description": f"Failed analysis of {table_name} table"}
+            )
+    
+    def _get_database_overview(self) -> Dict[str, Any]:
+        """Get database overview statistics"""
         conn = self.get_connection()
         try:
             stats = {}
@@ -464,13 +388,25 @@ class F1DatabaseAnalyzer:
             except Exception as e:
                 logger.warning(f"Could not analyze temporal coverage: {e}")
             
-            return AnalysisResult(
-                name="database_overview",
-                data=stats,
-                metadata={"description": "Database structure and basic statistics"}
-            )
+            return stats
         finally:
             conn.close()
+    
+    def _convert_for_json(self, data):
+        """Convert data for JSON serialization"""
+        if isinstance(data, dict):
+            return {str(k): self._convert_for_json(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._convert_for_json(item) for item in data]
+        elif isinstance(data, (np.integer, np.int64)):
+            return int(data)
+        elif isinstance(data, (np.floating, np.float64)):
+            return float(data)
+        elif isinstance(data, np.ndarray):
+            return data.tolist()
+        elif pd.isna(data):
+            return None
+        return data
     
     def save_analysis(self, result: AnalysisResult) -> None:
         """Save analysis result to JSON file"""
@@ -479,28 +415,8 @@ class F1DatabaseAnalyzer:
         
         with self.lock:
             try:
-                # Convert data for JSON serialization
-                def convert_for_json(obj):
-                    if isinstance(obj, (np.integer, np.int64)):
-                        return int(obj)
-                    elif isinstance(obj, (np.floating, np.float64)):
-                        return float(obj)
-                    elif isinstance(obj, np.ndarray):
-                        return obj.tolist()
-                    elif pd.isna(obj):
-                        return None
-                    return obj
-                
-                def deep_convert(data):
-                    if isinstance(data, dict):
-                        return {str(k): deep_convert(v) for k, v in data.items()}
-                    elif isinstance(data, list):
-                        return [deep_convert(item) for item in data]
-                    else:
-                        return convert_for_json(data)
-                
                 result_dict = asdict(result)
-                result_dict['data'] = deep_convert(result_dict['data'])
+                result_dict['data'] = self._convert_for_json(result_dict['data'])
                 
                 with open(filepath, 'w', encoding='utf-8') as f:
                     json.dump(result_dict, f, indent=2, ensure_ascii=False, default=str)
@@ -519,92 +435,63 @@ class F1DatabaseAnalyzer:
         print(f"🔄 Sample size for large tables: {SAMPLE_SIZE:,}")
         print("-" * 60)
         
-        # Prepare analysis tasks
-        tasks = [('database_overview', self.get_database_overview, [])]
-        tasks.extend([(table, self.analyze_table, [table]) for table in self.available_tables])
-        
         completed = 0
-        total = len(tasks)
+        total = len(self.available_tables)
         
-        # Execute analyses
+        # Execute table analyses
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            future_to_task = {}
-            for task_name, task_func, task_args in tasks:
-                future = executor.submit(self._execute_task, task_func, task_args)
-                future_to_task[future] = task_name
+            future_to_table = {executor.submit(self.analyze_table, table): table 
+                              for table in self.available_tables}
             
-            for future in as_completed(future_to_task):
-                task_name = future_to_task[future]
+            table_results = {}
+            for future in as_completed(future_to_table):
+                table = future_to_table[future]
                 try:
                     result = future.result()
                     if result:
                         self.save_analysis(result)
+                        table_results[table] = result.data
                         completed += 1
-                        print(f"✅ {completed}/{total} - {task_name}")
+                        print(f"✅ {completed}/{total} - {table}")
                     else:
-                        print(f"❌ {completed}/{total} - {task_name} (failed)")
+                        print(f"❌ {completed}/{total} - {table} (failed)")
                 except Exception as e:
-                    logger.error(f"Task {task_name} failed: {str(e)}")
-                    print(f"❌ {completed}/{total} - {task_name} (error)")
+                    logger.error(f"Table {table} failed: {str(e)}")
+                    print(f"❌ {completed}/{total} - {table} (error)")
         
-        # Generate final summary
-        self._generate_summary()
-        
-        print("\n" + "=" * 60)
-        print("🎯 ANALYSIS COMPLETE!")
-        print(f"✅ Completed: {completed}/{total} analyses")
-        print(f"📁 Files generated: {len(list(self.analysis_path.glob('*.json')))}")
-        print(f"📍 Location: {self.analysis_path}")
-        print("=" * 60)
-    
-    def _execute_task(self, task_func, task_args):
-        """Execute a single analysis task"""
+        # Generate combined analysis summary with database overview
         try:
-            return task_func(*task_args) if task_args else task_func()
-        except Exception as e:
-            logger.error(f"Task execution failed: {str(e)}")
-            return None
-    
-    def _generate_summary(self):
-        """Generate analysis summary"""
-        try:
-            files = list(self.analysis_path.glob("*.json"))
+            database_overview = self._get_database_overview()
             
-            summary = {
+            summary_data = {
                 'analysis_metadata': {
                     'timestamp': datetime.now().isoformat(),
-                    'total_files': len(files),
                     'database_path': str(self.db_path),
-                    'sample_size_used': SAMPLE_SIZE
+                    'sample_size_used': SAMPLE_SIZE,
+                    'tables_analyzed': completed,
+                    'total_tables_available': total
                 },
-                'files_generated': [f.name for f in files],
+                'database_overview': database_overview,
+                'files_generated': [f"{table}_statistics.json" for table in self.available_tables if table in [k.replace('_statistics', '') for k in table_results.keys()]],
                 'analysis_approach': 'Unified statistical analysis with optimized sampling'
             }
             
-            # Try to extract key metrics
-            try:
-                overview_file = self.analysis_path / "database_overview.json"
-                if overview_file.exists():
-                    with open(overview_file, 'r') as f:
-                        overview_data = json.load(f)
-                        if 'data' in overview_data:
-                            summary['key_metrics'] = {
-                                'total_records': overview_data['data'].get('total_records', 0),
-                                'tables_analyzed': overview_data['data'].get('tables_with_data', 0),
-                                'completeness_percentage': overview_data['data'].get('completeness_pct', 0)
-                            }
-            except:
-                pass
-            
             summary_result = AnalysisResult(
                 name="analysis_summary",
-                data=summary,
-                metadata={"description": "Complete analysis summary and metadata"}
+                data=summary_data,
+                metadata={"description": "Complete analysis summary with database overview"}
             )
             self.save_analysis(summary_result)
             
         except Exception as e:
             logger.warning(f"Could not generate summary: {e}")
+        
+        print("\n" + "=" * 60)
+        print("🎯 ANALYSIS COMPLETE!")
+        print(f"✅ Completed: {completed}/{total} table analyses")
+        print(f"📁 Files generated: {len(list(self.analysis_path.glob('*.json')))}")
+        print(f"📍 Location: {self.analysis_path}")
+        print("=" * 60)
 
 
 def main():
