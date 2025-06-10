@@ -2,6 +2,7 @@
 """
 Optimized F1 Database Statistical Analysis Script
 Performs comprehensive statistical analysis with a unified approach and structured output.
+Modified to prevent creation of temporary SQLite files.
 """
 
 import sqlite3
@@ -85,11 +86,21 @@ class F1DatabaseAnalyzer:
             return [row[0] for row in cursor.fetchall() if row[0] in self.TABLE_SCHEMA]
     
     def get_connection(self) -> sqlite3.Connection:
-        """Get an optimized database connection."""
-        conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA cache_size=-10000") # 10MB cache
+        """Get an optimized database connection that prevents temporary file creation."""
+        # Use immutable and read-only mode to prevent temp files
+        conn = sqlite3.connect(
+            f"file:{self.db_path}?mode=ro&immutable=1", 
+            uri=True, 
+            check_same_thread=False
+        )
+        
+        # Configure to prevent temporary files
+        conn.execute("PRAGMA journal_mode=OFF")  # Disable journal
+        conn.execute("PRAGMA synchronous=OFF")   # Disable synchronous writes
+        conn.execute("PRAGMA temp_store=MEMORY") # Store temp data in memory
+        conn.execute("PRAGMA cache_size=-10000") # 10MB cache in memory
+        conn.execute("PRAGMA mmap_size=0")       # Disable memory mapping
+        
         return conn
     
     def _get_table_sample(self, table_name: str) -> pd.DataFrame:
@@ -297,7 +308,7 @@ class F1DatabaseAnalyzer:
                     },
                     'database_overview': database_overview,
                     'files_generated': [f"{t}_statistics.json" for t in table_results],
-                    'analysis_approach': 'Unified statistical analysis with optimized sampling'
+                    'analysis_approach': 'Unified statistical analysis with optimized sampling and multithreading',
                 },
                 metadata={"description": "Complete analysis summary with database overview"}
             )
