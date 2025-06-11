@@ -102,19 +102,96 @@ class F1DatabaseAnalyzer:
     
     # Define column types for each table to guide the analysis
     TABLE_SCHEMA = {
-        'meetings': {'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'meeting_name', 'meeting_official_name', 'gmt_offset'], 'numeric': ['circuit_key', 'country_key', 'year'], 'date': ['date_start'], 'foreign_keys': ['meeting_key']},
-        'sessions': {'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'session_name', 'session_type', 'gmt_offset'], 'numeric': ['circuit_key', 'country_key', 'year'], 'date': ['date_start', 'date_end'], 'foreign_keys': ['session_key', 'meeting_key']},
-        'drivers': {'categorical': ['broadcast_name', 'country_code', 'first_name', 'last_name', 'full_name', 'name_acronym', 'team_name', 'team_colour', 'headshot_url'], 'numeric': [], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'intervals': {'categorical': [], 'numeric': ['gap_to_leader', 'interval'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'laps': {'categorical': ['segments_sector_1', 'segments_sector_2', 'segments_sector_3'], 'numeric': ['lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'lap_number'], 'boolean': ['is_pit_out_lap'], 'date': ['date_start'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'position': {'categorical': [], 'numeric': ['position'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'pit': {'categorical': [], 'numeric': ['pit_duration', 'lap_number'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'stints': {'categorical': ['compound'], 'numeric': ['lap_start', 'lap_end', 'stint_number', 'tyre_age_at_start'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'team_radio': {'categorical': [], 'numeric': [], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'location': {'categorical': [], 'numeric': ['x', 'y', 'z'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'car_data': {'categorical': [], 'numeric': ['speed', 'rpm', 'throttle', 'brake', 'drs'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
-        'weather': {'categorical': [], 'numeric': ['air_temperature', 'track_temperature', 'humidity', 'wind_speed', 'wind_direction', 'pressure', 'rainfall'], 'date': ['date'], 'foreign_keys': ['meeting_key', 'session_key']},
-        'race_control': {'categorical': ['category', 'flag', 'scope', 'sector', 'message'], 'numeric': ['lap_number'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']}
+        'meetings': {
+            'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'meeting_name', 'meeting_official_name', 'gmt_offset'], 
+            'numeric': ['circuit_key', 'country_key', 'year'], 
+            'date': ['date_start'], 
+            'primary_keys': ['meeting_key'],
+            'foreign_keys': []
+        },
+        'sessions': {
+            'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'session_name', 'session_type', 'gmt_offset'], 
+            'numeric': ['circuit_key', 'country_key', 'year'], 
+            'date': ['date_start', 'date_end'], 
+            'primary_keys': ['session_key'],
+            'foreign_keys': ['meeting_key']
+        },
+        'drivers': {
+            'categorical': ['broadcast_name', 'country_code', 'driver_number', 'first_name', 'last_name', 'full_name', 'name_acronym', 'team_name', 'team_colour', 'headshot_url'], 
+            'numeric': [],
+            'primary_keys': [],
+            'foreign_keys': ['meeting_key', 'session_key']
+        },
+        'intervals': {
+            'categorical': [], 
+            'numeric': ['gap_to_leader', 'interval'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'laps': {
+            'categorical': ['segments_sector_1', 'segments_sector_2', 'segments_sector_3'], 
+            'numeric': ['lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'lap_number'], 
+            'boolean': ['is_pit_out_lap'], 
+            'date': ['date_start'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'position': {
+            'categorical': [], 
+            'numeric': ['position'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'pit': {
+            'categorical': [], 
+            'numeric': ['pit_duration', 'lap_number'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'stints': {
+            'categorical': ['compound'], 
+            'numeric': ['lap_start', 'lap_end', 'stint_number', 'tyre_age_at_start'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'team_radio': {
+            'categorical': [], 
+            'numeric': [], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'location': {
+            'categorical': [], 
+            'numeric': ['x', 'y', 'z'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'car_data': {
+            'categorical': [], 
+            'numeric': ['speed', 'rpm', 'throttle', 'brake', 'drs'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'weather': {
+            'categorical': [], 
+            'numeric': ['air_temperature', 'track_temperature', 'humidity', 'wind_speed', 'wind_direction', 'pressure', 'rainfall'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['meeting_key', 'session_key']
+        },
+        'race_control': {
+            'categorical': ['category', 'flag', 'scope', 'sector', 'message'], 
+            'numeric': ['lap_number'], 
+            'date': ['date'], 
+            'primary_keys': [],
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        }
     }
     
     def __init__(self, db_path: Path, analysis_path: Path):
@@ -218,8 +295,8 @@ class F1DatabaseAnalyzer:
             duration = self._calculate_date_duration(valid_series)
             if duration:
                 stats[f"{column_name}_duration"] = duration
-        elif data_type == 'foreign_key':
-            # For foreign keys, only count and nulls (already handled above)
+        elif data_type in ['primary_key', 'foreign_key']:
+            # For keys, only count and nulls (already handled above)
             pass
 
         return stats
@@ -266,8 +343,14 @@ class F1DatabaseAnalyzer:
                     for col in columns:
                         if col in df.columns:
                             analysis.update(self._calculate_stats(df[col], col, col_type))
+                elif col_type == 'primary_keys':
+                    # Process primary keys with PK_ prefix
+                    for col in columns:
+                        if col in df.columns:
+                            pk_stats = self._calculate_stats(df[col], f"PK_{col}", 'primary_key')
+                            analysis.update(pk_stats)
                 elif col_type == 'foreign_keys':
-                    # Process foreign keys
+                    # Process foreign keys with FK_ prefix
                     for col in columns:
                         if col in df.columns:
                             fk_stats = self._calculate_stats(df[col], f"FK_{col}", 'foreign_key')
