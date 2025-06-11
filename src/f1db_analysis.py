@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Optimized F1 Database Statistical Analysis Script
-Performs comprehensive statistical analysis with a unified approach and structured output.
-Modified to prevent creation of temporary SQLite files.
+Performs comprehensive statistical analysis with a unified approach and structured output
 """
 
 import sqlite3
@@ -14,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import threading
 from dataclasses import dataclass, asdict
 
@@ -42,30 +41,142 @@ class AnalysisResult:
         if self.timestamp is None:
             self.timestamp = datetime.now().isoformat()
 
+class SQLiteManager:
+    """Optimized SQLite connection and query manager."""
+    
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        
+    def get_connection(self) -> sqlite3.Connection:
+        """Get an optimized database connection that prevents temporary file creation."""
+        conn = sqlite3.connect(
+            f"file:{self.db_path}?mode=ro&immutable=1", 
+            uri=True, 
+            check_same_thread=False
+        )
+        
+        # Configure to prevent temporary files and optimize performance
+        optimizations = [
+            "PRAGMA journal_mode=OFF",
+            "PRAGMA synchronous=OFF",
+            "PRAGMA temp_store=MEMORY",
+            "PRAGMA cache_size=-10000",
+            "PRAGMA mmap_size=0"
+        ]
+        
+        for pragma in optimizations:
+            conn.execute(pragma)
+        
+        return conn
+    
+    def execute_query(self, query: str, params: Optional[tuple] = None) -> pd.DataFrame:
+        """Execute a query and return results as DataFrame."""
+        with self.get_connection() as conn:
+            return pd.read_sql(query, conn, params=params)
+    
+    def get_table_names(self, schema_filter: Dict[str, Any]) -> List[str]:
+        """Get available table names that match the schema filter."""
+        query = "SELECT name FROM sqlite_master WHERE type='table'"
+        tables_df = self.execute_query(query)
+        return [name for name in tables_df['name'].tolist() if name in schema_filter]
+    
+    def get_table_count(self, table_name: str) -> int:
+        """Get total row count for a table."""
+        try:
+            result = self.execute_query(f"SELECT COUNT(*) as total_count FROM {table_name}")
+            return int(result.iloc[0]['total_count'])
+        except Exception as e:
+            logger.warning(f"Could not get row count for {table_name}: {e}")
+            return 0
+    
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """Get column names for a table."""
+        columns_info = self.execute_query(f"PRAGMA table_info({table_name})")
+        return columns_info['name'].tolist()
+    
+    def sample_table(self, table_name: str, sample_size: int) -> pd.DataFrame:
+        """Get a sample from a table using simple random sampling."""
+        query = f"SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT {sample_size}"
+        return self.execute_query(query)
+
 class F1DatabaseAnalyzer:
     """Optimized F1 Database Statistical Analysis Engine."""
     
     # Define column types for each table to guide the analysis
     TABLE_SCHEMA = {
-        'meetings': {'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'meeting_name', 'meeting_official_name', 'gmt_offset'], 'numeric': ['circuit_key', 'country_key'], 'skip_detailed': ['meeting_key', 'year']},
-        'sessions': {'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'session_name', 'session_type', 'gmt_offset'], 'numeric': ['circuit_key', 'country_key'], 'skip_detailed': ['session_key', 'meeting_key', 'year']},
-        'drivers': {'categorical': ['broadcast_name', 'country_code', 'first_name', 'last_name', 'full_name', 'name_acronym', 'team_name', 'team_colour', 'headshot_url'], 'numeric': [], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key', 'year']},
-        'intervals': {'categorical': [], 'numeric': ['gap_to_leader', 'interval'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'laps': {'categorical': ['segments_sector_1', 'segments_sector_2', 'segments_sector_3'], 'numeric': ['lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'lap_number'], 'boolean': ['is_pit_out_lap'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'position': {'categorical': [], 'numeric': ['position'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'pit': {'categorical': [], 'numeric': ['pit_duration', 'lap_number'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'stints': {'categorical': ['compound'], 'numeric': ['lap_start', 'lap_end', 'stint_number', 'tyre_age_at_start'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'team_radio': {'categorical': [], 'numeric': [], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'location': {'categorical': [], 'numeric': ['x', 'y', 'z'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'car_data': {'categorical': [], 'numeric': ['speed', 'rpm', 'throttle', 'brake', 'drs'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']},
-        'weather': {'categorical': [], 'numeric': ['air_temperature', 'track_temperature', 'humidity', 'wind_speed', 'wind_direction', 'pressure', 'rainfall'], 'skip_detailed': ['meeting_key', 'session_key']},
-        'race_control': {'categorical': ['category', 'flag', 'scope', 'sector', 'message'], 'numeric': ['lap_number'], 'skip_detailed': ['driver_number', 'meeting_key', 'session_key']}
+        'meetings': {
+            'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'meeting_name', 'meeting_official_name', 'gmt_offset'], 
+            'numeric': ['circuit_key', 'country_key'], 
+            'foreign_keys': ['meeting_key', 'year']
+        },
+        'sessions': {
+            'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'session_name', 'session_type', 'gmt_offset'], 
+            'numeric': ['circuit_key', 'country_key'], 
+            'foreign_keys': ['session_key', 'meeting_key', 'year']
+        },
+        'drivers': {
+            'categorical': ['broadcast_name', 'country_code', 'first_name', 'last_name', 'full_name', 'name_acronym', 'team_name', 'team_colour', 'headshot_url'], 
+            'numeric': [], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key', 'year']
+        },
+        'intervals': {
+            'categorical': [], 
+            'numeric': ['gap_to_leader', 'interval'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'laps': {
+            'categorical': ['segments_sector_1', 'segments_sector_2', 'segments_sector_3'], 
+            'numeric': ['lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'lap_number'], 
+            'boolean': ['is_pit_out_lap'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'position': {
+            'categorical': [], 
+            'numeric': ['position'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'pit': {
+            'categorical': [], 
+            'numeric': ['pit_duration', 'lap_number'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'stints': {
+            'categorical': ['compound'], 
+            'numeric': ['lap_start', 'lap_end', 'stint_number', 'tyre_age_at_start'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'team_radio': {
+            'categorical': [], 
+            'numeric': [], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'location': {
+            'categorical': [], 
+            'numeric': ['x', 'y', 'z'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'car_data': {
+            'categorical': [], 
+            'numeric': ['speed', 'rpm', 'throttle', 'brake', 'drs'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        },
+        'weather': {
+            'categorical': [], 
+            'numeric': ['air_temperature', 'track_temperature', 'humidity', 'wind_speed', 'wind_direction', 'pressure', 'rainfall'], 
+            'foreign_keys': ['meeting_key', 'session_key']
+        },
+        'race_control': {
+            'categorical': ['category', 'flag', 'scope', 'sector', 'message'], 
+            'numeric': ['lap_number'], 
+            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
+        }
     }
     
     def __init__(self, db_path: Path, analysis_path: Path):
         self.db_path = db_path
         self.analysis_path = analysis_path
         self.lock = threading.Lock()
+        self.sql_manager = SQLiteManager(db_path)
         
         # Clean and recreate analysis directory
         if self.analysis_path.exists():
@@ -75,57 +186,40 @@ class F1DatabaseAnalyzer:
         if not self.db_path.exists():
             raise FileNotFoundError(f"Database not found at {self.db_path}")
         
-        self.available_tables = self._get_available_tables()
+        self.available_tables = self.sql_manager.get_table_names(self.TABLE_SCHEMA)
+        self.table_row_counts = self._get_table_row_counts()
         logger.info(f"Found {len(self.available_tables)} tables in database.")
     
-    def _get_available_tables(self) -> List[str]:
-        """Get the list of available tables in the database that match our schema."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            return [row[0] for row in cursor.fetchall() if row[0] in self.TABLE_SCHEMA]
+    def _get_table_row_counts(self) -> Dict[str, int]:
+        """Get row counts for all tables."""
+        return {table: self.sql_manager.get_table_count(table) for table in self.available_tables}
     
-    def get_connection(self) -> sqlite3.Connection:
-        """Get an optimized database connection that prevents temporary file creation."""
-        # Use immutable and read-only mode to prevent temp files
-        conn = sqlite3.connect(
-            f"file:{self.db_path}?mode=ro&immutable=1", 
-            uri=True, 
-            check_same_thread=False
-        )
+    def _get_table_sample(self, table_name: str) -> tuple[pd.DataFrame, bool]:
+        """Get a sample from a table. Returns (dataframe, was_sampled)."""
+        total_rows = self.table_row_counts.get(table_name, 0)
         
-        # Configure to prevent temporary files
-        conn.execute("PRAGMA journal_mode=OFF")  # Disable journal
-        conn.execute("PRAGMA synchronous=OFF")   # Disable synchronous writes
-        conn.execute("PRAGMA temp_store=MEMORY") # Store temp data in memory
-        conn.execute("PRAGMA cache_size=-10000") # 10MB cache in memory
-        conn.execute("PRAGMA mmap_size=0")       # Disable memory mapping
+        if total_rows == 0:
+            return pd.DataFrame(), False
         
-        return conn
+        # Simple sampling logic - if larger than SAMPLE_SIZE, sample exactly SAMPLE_SIZE
+        if total_rows <= SAMPLE_SIZE:
+            df = self.sql_manager.execute_query(f"SELECT * FROM {table_name}")
+            return df, False
+        else:
+            df = self.sql_manager.sample_table(table_name, SAMPLE_SIZE)
+            return df, True
     
-    def _get_table_sample(self, table_name: str) -> pd.DataFrame:
-        """Get a representative sample from a table, fetching all data for small tables."""
-        with self.get_connection() as conn:
-            total_rows = pd.read_sql(f"SELECT COUNT(*) FROM {table_name}", conn).iloc[0, 0]
-            if total_rows <= SAMPLE_SIZE:
-                return pd.read_sql(f"SELECT * FROM {table_name}", conn)
-            
-            # For large tables, attempt to sample across sessions, otherwise do a random sample
-            if 'session_key' in pd.read_sql(f"PRAGMA table_info({table_name})", conn)['name'].values:
-                query = f"SELECT * FROM {table_name} WHERE session_key IN (SELECT DISTINCT session_key FROM {table_name} ORDER BY RANDOM() LIMIT 10) ORDER BY RANDOM() LIMIT {SAMPLE_SIZE}"
-            else:
-                query = f"SELECT * FROM {table_name} ORDER BY RANDOM() LIMIT {SAMPLE_SIZE}"
-            return pd.read_sql(query, conn)
-            
+    def _format_number(self, num: int) -> str:
+        """Format number with space separators for thousands."""
+        return f"{num:,}".replace(',', ' ')
+    
     def _calculate_stats(self, series: pd.Series, column_name: str, data_type: str) -> Dict[str, Any]:
         """Unified statistics calculation for a given pandas Series."""
         total_count = len(series)
         null_count = series.isna().sum()
         stats = {
-            f"{column_name}_count": total_count,
-            f"{column_name}_valid_count": total_count - null_count,
-            f"{column_name}_null_count": int(null_count),
-            f"{column_name}_null_percentage": round(null_count / total_count, 4) if total_count > 0 else 0.0
+            f"{column_name}_total_count": total_count,
+            f"{column_name}_null_count": int(null_count)
         }
         
         valid_series = series.dropna()
@@ -153,7 +247,9 @@ class F1DatabaseAnalyzer:
             bool_series = valid_series.astype(bool)
             true_count = bool_series.sum()
             stats[f"{column_name}_true_count"] = int(true_count)
-            stats[f"{column_name}_true_percentage"] = round(true_count / len(bool_series), 4)
+        elif data_type == 'foreign_key':
+            # For foreign keys, only count and nulls (already handled above)
+            pass
 
         return stats
     
@@ -165,10 +261,6 @@ class F1DatabaseAnalyzer:
                 laps = pd.to_numeric(df['lap_duration'], errors='coerce').dropna()
                 if not laps.empty and laps.mean() > 0:
                     metrics['lap_consistency_cv'] = round((laps.std() / laps.mean()), 4)
-            elif table_name == 'pit' and 'pit_duration' in df.columns:
-                pits = pd.to_numeric(df['pit_duration'], errors='coerce').dropna()
-                if not pits.empty:
-                    metrics['pit_stop_efficiency_pct'] = {'under_3_sec': round((pits < 3.0).mean(), 4)}
         except Exception as e:
             logger.warning(f"Could not calculate specific metrics for {table_name}: {e}")
         return metrics
@@ -176,22 +268,32 @@ class F1DatabaseAnalyzer:
     def analyze_table(self, table_name: str) -> AnalysisResult:
         """Analyzes a single database table and returns structured results."""
         try:
-            df = self._get_table_sample(table_name)
+            total_records = self.table_row_counts.get(table_name, 0)
+            df, was_sampled = self._get_table_sample(table_name)
+            
             if df.empty:
-                return AnalysisResult(name=f"{table_name}_statistics", data={"error": f"No data in {table_name}"}, metadata={})
+                return AnalysisResult(
+                    name=f"{table_name}_statistics", 
+                    data={"error": f"No data in {table_name}"}, 
+                    metadata={
+                        "table_name": table_name,
+                        "analysis_type": "statistical_summary",
+                        "sampling_applied": False,
+                        "data_quality": "no_data"
+                    }
+                )
 
             schema = self.TABLE_SCHEMA.get(table_name, {})
-            analysis = {'dataset_size': len(df)}
+            analysis = {
+                'table_total_records': len(df) if was_sampled else total_records
+            }
             
-            # Calculate table-level nulls (based on sample, where a row is null if ALL elements are null)
-            total_rows = len(df)
-            if total_rows > 0:
+            # Calculate table-level nulls
+            if len(df) > 0:  
                 null_rows_count = df.isnull().all(axis=1).sum()
                 analysis['table_null_records'] = int(null_rows_count)
-                analysis['table_null_percentage'] = round(null_rows_count / total_rows, 4)
             else:
                 analysis['table_null_records'] = 0
-                analysis['table_null_percentage'] = 0.0
 
             # Process columns based on schema
             for col_type, columns in schema.items():
@@ -199,27 +301,51 @@ class F1DatabaseAnalyzer:
                     for col in columns:
                         if col in df.columns:
                             analysis.update(self._calculate_stats(df[col], col, col_type))
+                elif col_type == 'foreign_keys':
+                    # Process foreign keys
+                    for col in columns:
+                        if col in df.columns:
+                            fk_stats = self._calculate_stats(df[col], f"FK_{col}", 'foreign_key')
+                            analysis.update(fk_stats)
             
             analysis.update(self._get_table_specific_metrics(table_name, df))
             
-            return AnalysisResult(name=f"{table_name}_statistics", data=analysis, metadata={"description": f"Statistical analysis of F1 {table_name} data"})
+            return AnalysisResult(
+                name=f"{table_name}_statistics", 
+                data=analysis, 
+                metadata={
+                    "table_name": table_name,
+                    "analysis_type": "statistical_summary",
+                    "sampling_applied": was_sampled,
+                    "sample_size": SAMPLE_SIZE if was_sampled else None,
+                    "data_quality": "complete"
+                }
+            )
         except Exception as e:
             logger.error(f"Error analyzing {table_name}: {e}")
-            return AnalysisResult(name=f"{table_name}_statistics", data={"error": str(e)}, metadata={})
+            return AnalysisResult(
+                name=f"{table_name}_statistics", 
+                data={"error": str(e)}, 
+                metadata={
+                    "table_name": table_name,
+                    "analysis_type": "statistical_summary",
+                    "sampling_applied": False,
+                    "data_quality": "error"
+                }
+            )
     
     def _get_temporal_coverage(self) -> Dict[str, Any]:
         """Fetches temporal coverage from the meetings table."""
         if 'meetings' not in self.available_tables:
             return {}
         try:
-            with self.get_connection() as conn:
-                query = "SELECT MIN(date_start) as min, MAX(date_start) as max, COUNT(DISTINCT year) as years FROM meetings"
-                res = pd.read_sql(query, conn).iloc[0]
-                return {
-                    'earliest_date': str(res['min']) if pd.notna(res['min']) else None,
-                    'latest_date': str(res['max']) if pd.notna(res['max']) else None,
-                    'years_covered': int(res['years']) if pd.notna(res['years']) else 0
-                }
+            query = "SELECT MIN(date_start) as min, MAX(date_start) as max, COUNT(DISTINCT year) as years FROM meetings"
+            res = self.sql_manager.execute_query(query).iloc[0]
+            return {
+                'earliest_date': str(res['min']) if pd.notna(res['min']) else None,
+                'latest_date': str(res['max']) if pd.notna(res['max']) else None,
+                'years_covered': int(res['years']) if pd.notna(res['years']) else 0
+            }
         except Exception as e:
             logger.warning(f"Could not analyze temporal coverage: {e}")
             return {}
@@ -257,12 +383,14 @@ class F1DatabaseAnalyzer:
         """Main function to run the entire analysis pipeline."""
         print(f"🚀 Starting F1 Database Analysis on {self.db_path.name}")
         print(f"📊 Analyzing {len(self.available_tables)} tables into {self.analysis_path}")
-        print("-" * 60)
+        print(f"📈 Total records across all tables: {self._format_number(sum(self.table_row_counts.values()))}")
+        print("-" * 80)
         
         # Concurrently analyze all tables
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             future_to_table = {executor.submit(self.analyze_table, table): table for table in self.available_tables}
             table_results = {}
+            
             for i, future in enumerate(as_completed(future_to_table), 1):
                 table = future_to_table[future]
                 try:
@@ -270,31 +398,41 @@ class F1DatabaseAnalyzer:
                     if result and 'error' not in result.data:
                         self.save_analysis(result)
                         table_results[table] = result.data
-                        print(f"✅ {i}/{len(self.available_tables)} - Analyzed {table}")
+                        
+                        table_total_records = self.table_row_counts.get(table, 0)
+                        analyzed_records = result.data.get('table_total_records', 0)
+                        was_sampled = result.metadata.get('sampling_applied', False)
+                        
+                        if was_sampled:
+                            sample_info = f"(sampled: {self._format_number(analyzed_records)} / total: {self._format_number(table_total_records)})"
+                        else:
+                            sample_info = f"(total: {self._format_number(table_total_records)})"
+                        
+                        print(f"✅ [{i:2d}/{len(self.available_tables)}] {table:<15} | {sample_info}")
                     else:
-                        print(f"❌ {i}/{len(self.available_tables)} - Failed {table}: {result.data.get('error', 'Unknown')}")
+                        error_msg = result.data.get('error', 'Unknown error') if result else 'No result'
+                        print(f"❌ [{i:2d}/{len(self.available_tables)}] {table:<15} | FAILED: {error_msg}")
                 except Exception as e:
                     logger.error(f"Table {table} analysis threw an exception: {e}")
-                    print(f"❌ {i}/{len(self.available_tables)} - Errored on {table}")
+                    print(f"💥 [{i:2d}/{len(self.available_tables)}] {table:<15} | EXCEPTION: {str(e)[:50]}...")
         
         # --- Generate Final Summary Report ---
         try:
-            database_overview = {}
-            with self.get_connection() as conn:
-                table_counts = {tbl: pd.read_sql(f"SELECT COUNT(*) as c FROM {tbl}", conn).iloc[0]['c'] for tbl in self.available_tables}
+            analysis_overview = {}
 
-            # Populate the overview dict, ensuring the desired order
+            # Populate the overview dict in the desired order
             for table in self.available_tables:
-                database_overview[f"{table}_records"] = int(table_counts.get(table, 0))
+                table_count = self.table_row_counts.get(table, 0)
+                analysis_overview[f"{table}_records"] = table_count
+                
                 res = table_results.get(table, {})
-                database_overview[f"{table}_null_records"] = res.get('table_null_records')
-                database_overview[f"{table}_null_percentage"] = res.get('table_null_percentage')
+                analysis_overview[f"{table}_null_records"] = res.get('table_null_records', 0)
 
             # Add aggregate stats
-            database_overview['total_records'] = sum(table_counts.values())
-            database_overview['tables_with_data'] = sum(1 for v in table_counts.values() if v > 0)
-            database_overview['completeness_pct'] = round((database_overview['tables_with_data'] / len(self.available_tables)) * 100, 2) if self.available_tables else 0.0
-            database_overview['temporal_coverage'] = self._get_temporal_coverage()
+            analysis_overview['total_records'] = sum(self.table_row_counts.values())
+            analysis_overview['tables_with_data'] = sum(1 for v in self.table_row_counts.values() if v > 0)
+            analysis_overview['completeness_pct'] = round((analysis_overview['tables_with_data'] / len(self.available_tables)) * 100, 2) if self.available_tables else 0.0
+            analysis_overview['temporal_coverage'] = self._get_temporal_coverage()
             
             summary = AnalysisResult(
                 name="analysis_summary",
@@ -306,20 +444,26 @@ class F1DatabaseAnalyzer:
                         'tables_analyzed': len(table_results),
                         'total_tables_available': len(self.available_tables)
                     },
-                    'database_overview': database_overview,
                     'files_generated': [f"{t}_statistics.json" for t in table_results],
-                    'analysis_approach': 'Unified statistical analysis with optimized sampling and multithreading',
+                    'analysis_overview': analysis_overview
                 },
-                metadata={"description": "Complete analysis summary with database overview"}
+                metadata={
+                    "analysis_type": "database_summary",
+                    "tables_included": list(table_results.keys()),
+                    "sampling_threshold": SAMPLE_SIZE,
+                    "data_quality": "comprehensive"
+                }
             )
             self.save_analysis(summary)
         except Exception as e:
             logger.error(f"Could not generate final summary: {e}")
         
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 80)
         print("🎯 ANALYSIS COMPLETE!")
         print(f"📁 Reports generated in: {self.analysis_path}")
-        print("=" * 60)
+        print(f"📊 Successfully analyzed {len(table_results)}/{len(self.available_tables)} tables")
+        print(f"📈 Total records processed: {self._format_number(sum(self.table_row_counts.values()))}")
+        print("=" * 80)
 
 def main():
     """Main execution function."""
