@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Optimized F1 Database Statistical Analysis Script
 Performs comprehensive statistical analysis with a unified approach and structured output
@@ -34,7 +33,6 @@ class AnalysisResult:
     """Data class for holding analysis results."""
     name: str
     data: Any
-    metadata: Dict[str, Any]
     timestamp: str = None
     
     def __post_init__(self):
@@ -104,72 +102,19 @@ class F1DatabaseAnalyzer:
     
     # Define column types for each table to guide the analysis
     TABLE_SCHEMA = {
-        'meetings': {
-            'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'meeting_name', 'meeting_official_name', 'gmt_offset'], 
-            'numeric': ['circuit_key', 'country_key'], 
-            'foreign_keys': ['meeting_key', 'year']
-        },
-        'sessions': {
-            'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'session_name', 'session_type', 'gmt_offset'], 
-            'numeric': ['circuit_key', 'country_key'], 
-            'foreign_keys': ['session_key', 'meeting_key', 'year']
-        },
-        'drivers': {
-            'categorical': ['broadcast_name', 'country_code', 'first_name', 'last_name', 'full_name', 'name_acronym', 'team_name', 'team_colour', 'headshot_url'], 
-            'numeric': [], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key', 'year']
-        },
-        'intervals': {
-            'categorical': [], 
-            'numeric': ['gap_to_leader', 'interval'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'laps': {
-            'categorical': ['segments_sector_1', 'segments_sector_2', 'segments_sector_3'], 
-            'numeric': ['lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'lap_number'], 
-            'boolean': ['is_pit_out_lap'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'position': {
-            'categorical': [], 
-            'numeric': ['position'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'pit': {
-            'categorical': [], 
-            'numeric': ['pit_duration', 'lap_number'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'stints': {
-            'categorical': ['compound'], 
-            'numeric': ['lap_start', 'lap_end', 'stint_number', 'tyre_age_at_start'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'team_radio': {
-            'categorical': [], 
-            'numeric': [], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'location': {
-            'categorical': [], 
-            'numeric': ['x', 'y', 'z'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'car_data': {
-            'categorical': [], 
-            'numeric': ['speed', 'rpm', 'throttle', 'brake', 'drs'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        },
-        'weather': {
-            'categorical': [], 
-            'numeric': ['air_temperature', 'track_temperature', 'humidity', 'wind_speed', 'wind_direction', 'pressure', 'rainfall'], 
-            'foreign_keys': ['meeting_key', 'session_key']
-        },
-        'race_control': {
-            'categorical': ['category', 'flag', 'scope', 'sector', 'message'], 
-            'numeric': ['lap_number'], 
-            'foreign_keys': ['driver_number', 'meeting_key', 'session_key']
-        }
+        'meetings': {'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'meeting_name', 'meeting_official_name', 'gmt_offset'], 'numeric': ['circuit_key', 'country_key', 'year'], 'date': ['date_start'], 'foreign_keys': ['meeting_key']},
+        'sessions': {'categorical': ['circuit_short_name', 'country_code', 'country_name', 'location', 'session_name', 'session_type', 'gmt_offset'], 'numeric': ['circuit_key', 'country_key', 'year'], 'date': ['date_start', 'date_end'], 'foreign_keys': ['session_key', 'meeting_key']},
+        'drivers': {'categorical': ['broadcast_name', 'country_code', 'first_name', 'last_name', 'full_name', 'name_acronym', 'team_name', 'team_colour', 'headshot_url'], 'numeric': [], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'intervals': {'categorical': [], 'numeric': ['gap_to_leader', 'interval'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'laps': {'categorical': ['segments_sector_1', 'segments_sector_2', 'segments_sector_3'], 'numeric': ['lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'lap_number'], 'boolean': ['is_pit_out_lap'], 'date': ['date_start'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'position': {'categorical': [], 'numeric': ['position'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'pit': {'categorical': [], 'numeric': ['pit_duration', 'lap_number'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'stints': {'categorical': ['compound'], 'numeric': ['lap_start', 'lap_end', 'stint_number', 'tyre_age_at_start'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'team_radio': {'categorical': [], 'numeric': [], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'location': {'categorical': [], 'numeric': ['x', 'y', 'z'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'car_data': {'categorical': [], 'numeric': ['speed', 'rpm', 'throttle', 'brake', 'drs'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']},
+        'weather': {'categorical': [], 'numeric': ['air_temperature', 'track_temperature', 'humidity', 'wind_speed', 'wind_direction', 'pressure', 'rainfall'], 'date': ['date'], 'foreign_keys': ['meeting_key', 'session_key']},
+        'race_control': {'categorical': ['category', 'flag', 'scope', 'sector', 'message'], 'numeric': ['lap_number'], 'date': ['date'], 'foreign_keys': ['driver_number', 'meeting_key', 'session_key']}
     }
     
     def __init__(self, db_path: Path, analysis_path: Path):
@@ -213,6 +158,28 @@ class F1DatabaseAnalyzer:
         """Format number with space separators for thousands."""
         return f"{num:,}".replace(',', ' ')
     
+    def _calculate_date_duration(self, series: pd.Series) -> Optional[str]:
+        """Calculate duration between min and max date values in ISO 8601 format."""
+        try:
+            valid_dates = pd.to_datetime(series.dropna(), errors='coerce').dropna()
+            if len(valid_dates) < 2:
+                return None
+            
+            min_date = valid_dates.min()
+            max_date = valid_dates.max()
+            duration = max_date - min_date
+            
+            # Convert to ISO 8601 duration format
+            days = duration.days
+            seconds = duration.seconds
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            seconds = seconds % 60
+            
+            return f"P{days}DT{hours}H{minutes}M{seconds}S"
+        except Exception:
+            return None
+    
     def _calculate_stats(self, series: pd.Series, column_name: str, data_type: str) -> Dict[str, Any]:
         """Unified statistics calculation for a given pandas Series."""
         total_count = len(series)
@@ -241,12 +208,16 @@ class F1DatabaseAnalyzer:
         elif data_type == 'categorical':
             stats[f"{column_name}_unique_count"] = valid_series.nunique()
             if column_name not in ['date', 'recording_url']:
-                value_counts = valid_series.value_counts().head(10)
+                value_counts = valid_series.value_counts().head(3)  # Changed from 10 to 3
                 stats[f"{column_name}_top_values"] = {str(k): int(v) for k, v in value_counts.items()}
         elif data_type == 'boolean':
             bool_series = valid_series.astype(bool)
             true_count = bool_series.sum()
             stats[f"{column_name}_true_count"] = int(true_count)
+        elif data_type == 'date':
+            duration = self._calculate_date_duration(valid_series)
+            if duration:
+                stats[f"{column_name}_duration"] = duration
         elif data_type == 'foreign_key':
             # For foreign keys, only count and nulls (already handled above)
             pass
@@ -274,13 +245,7 @@ class F1DatabaseAnalyzer:
             if df.empty:
                 return AnalysisResult(
                     name=f"{table_name}_statistics", 
-                    data={"error": f"No data in {table_name}"}, 
-                    metadata={
-                        "table_name": table_name,
-                        "analysis_type": "statistical_summary",
-                        "sampling_applied": False,
-                        "data_quality": "no_data"
-                    }
+                    data={"error": f"No data in {table_name}"}
                 )
 
             schema = self.TABLE_SCHEMA.get(table_name, {})
@@ -297,7 +262,7 @@ class F1DatabaseAnalyzer:
 
             # Process columns based on schema
             for col_type, columns in schema.items():
-                if col_type in ['numeric', 'categorical', 'boolean']:
+                if col_type in ['numeric', 'categorical', 'boolean', 'date']:
                     for col in columns:
                         if col in df.columns:
                             analysis.update(self._calculate_stats(df[col], col, col_type))
@@ -312,43 +277,14 @@ class F1DatabaseAnalyzer:
             
             return AnalysisResult(
                 name=f"{table_name}_statistics", 
-                data=analysis, 
-                metadata={
-                    "table_name": table_name,
-                    "analysis_type": "statistical_summary",
-                    "sampling_applied": was_sampled,
-                    "sample_size": SAMPLE_SIZE if was_sampled else None,
-                    "data_quality": "complete"
-                }
+                data=analysis
             )
         except Exception as e:
             logger.error(f"Error analyzing {table_name}: {e}")
             return AnalysisResult(
                 name=f"{table_name}_statistics", 
-                data={"error": str(e)}, 
-                metadata={
-                    "table_name": table_name,
-                    "analysis_type": "statistical_summary",
-                    "sampling_applied": False,
-                    "data_quality": "error"
-                }
+                data={"error": str(e)}
             )
-    
-    def _get_temporal_coverage(self) -> Dict[str, Any]:
-        """Fetches temporal coverage from the meetings table."""
-        if 'meetings' not in self.available_tables:
-            return {}
-        try:
-            query = "SELECT MIN(date_start) as min, MAX(date_start) as max, COUNT(DISTINCT year) as years FROM meetings"
-            res = self.sql_manager.execute_query(query).iloc[0]
-            return {
-                'earliest_date': str(res['min']) if pd.notna(res['min']) else None,
-                'latest_date': str(res['max']) if pd.notna(res['max']) else None,
-                'years_covered': int(res['years']) if pd.notna(res['years']) else 0
-            }
-        except Exception as e:
-            logger.warning(f"Could not analyze temporal coverage: {e}")
-            return {}
 
     def _convert_for_json(self, data):
         """Recursively converts numpy types to native Python types for JSON serialization."""
@@ -401,7 +337,7 @@ class F1DatabaseAnalyzer:
                         
                         table_total_records = self.table_row_counts.get(table, 0)
                         analyzed_records = result.data.get('table_total_records', 0)
-                        was_sampled = result.metadata.get('sampling_applied', False)
+                        was_sampled = analyzed_records < table_total_records
                         
                         if was_sampled:
                             sample_info = f"(sampled: {self._format_number(analyzed_records)} / total: {self._format_number(table_total_records)})"
@@ -418,40 +354,31 @@ class F1DatabaseAnalyzer:
         
         # --- Generate Final Summary Report ---
         try:
-            analysis_overview = {}
-
-            # Populate the overview dict in the desired order
+            # Build tables_overview
+            tables_overview = {}
             for table in self.available_tables:
                 table_count = self.table_row_counts.get(table, 0)
-                analysis_overview[f"{table}_records"] = table_count
+                tables_overview[f"{table}_total_records"] = table_count
                 
                 res = table_results.get(table, {})
-                analysis_overview[f"{table}_null_records"] = res.get('table_null_records', 0)
+                tables_overview[f"{table}_null_records"] = res.get('table_null_records', 0)
 
-            # Add aggregate stats
-            analysis_overview['total_records'] = sum(self.table_row_counts.values())
-            analysis_overview['tables_with_data'] = sum(1 for v in self.table_row_counts.values() if v > 0)
-            analysis_overview['completeness_pct'] = round((analysis_overview['tables_with_data'] / len(self.available_tables)) * 100, 2) if self.available_tables else 0.0
-            analysis_overview['temporal_coverage'] = self._get_temporal_coverage()
+            # Build general section
+            general = {
+                'database_path': str(self.db_path),
+                'total_records': sum(self.table_row_counts.values()),
+                'sample_size': SAMPLE_SIZE,
+                'tables_available': len(self.available_tables),
+                'tables_completed': len(table_results)
+            }
             
+            # Swapped order: tables_overview first, then files_generated
             summary = AnalysisResult(
                 name="analysis_summary",
                 data={
-                    'analysis_metadata': {
-                        'timestamp': datetime.now().isoformat(),
-                        'database_path': str(self.db_path),
-                        'sample_size_used': SAMPLE_SIZE,
-                        'tables_analyzed': len(table_results),
-                        'total_tables_available': len(self.available_tables)
-                    },
-                    'files_generated': [f"{t}_statistics.json" for t in table_results],
-                    'analysis_overview': analysis_overview
-                },
-                metadata={
-                    "analysis_type": "database_summary",
-                    "tables_included": list(table_results.keys()),
-                    "sampling_threshold": SAMPLE_SIZE,
-                    "data_quality": "comprehensive"
+                    'general': general,
+                    'tables_overview': tables_overview,
+                    'files_generated': [f"{t}_statistics.json" for t in table_results]
                 }
             )
             self.save_analysis(summary)
