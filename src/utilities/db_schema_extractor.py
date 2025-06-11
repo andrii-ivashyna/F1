@@ -4,14 +4,18 @@ import os
 
 def get_db_schema(db_path):
     """
-    Connects to a SQLite database and extracts schema information for all tables.
+    Connects to a SQLite database and extracts a simplified schema for all tables.
+
+    This function retrieves the name, type, primary key, and foreign key
+    information for each column in every table.
 
     Args:
         db_path (str): The path to the SQLite database file.
 
     Returns:
         dict: A dictionary where keys are table names and values are lists
-              of dictionaries, each describing a column (name, type, pk, notnull, default_value).
+              of dictionaries, each describing a column with its "name",
+              "type", "primary_key", and "foreign_key" details.
               Returns None if the database file does not exist or an error occurs.
     """
     if not os.path.exists(db_path):
@@ -38,14 +42,33 @@ def get_db_schema(db_path):
             # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
             cursor.execute(f"PRAGMA table_info('{table_name}');")
             columns_info = cursor.fetchall()
+            
+            # Get foreign key information for the current table
+            # PRAGMA foreign_key_list returns: id, seq, table, from, to, on_update, on_delete, match
+            cursor.execute(f"PRAGMA foreign_key_list('{table_name}');")
+            foreign_keys = cursor.fetchall()
+
+            # Create a map of column names to their foreign key details for easy lookup
+            fk_map = {}
+            for fk in foreign_keys:
+                # fk[3] is the 'from' column, fk[2] is the 'table' it references, fk[4] is the 'to' column
+                fk_details = {
+                    "references_table": fk[2],
+                    "references_column": fk[4]
+                }
+                # A single column can be part of multiple foreign key constraints
+                if fk[3] not in fk_map:
+                    fk_map[fk[3]] = []
+                fk_map[fk[3]].append(fk_details)
+
 
             for col_info in columns_info:
+                col_name = col_info[1]
                 column_details = {
-                    "name": col_info[1],
+                    "name": col_name,
                     "type": col_info[2],
-                    "not_null": bool(col_info[3]), # Convert 0/1 to False/True
-                    "default_value": col_info[4],
-                    "primary_key": bool(col_info[5]) # Convert 0/1 to False/True
+                    "primary_key": bool(col_info[5]), # Convert 0/1 to False/True
+                    "foreign_key": fk_map.get(col_name) # Get FK details, will be None if not a FK
                 }
                 schema[table_name].append(column_details)
         
@@ -64,12 +87,12 @@ if __name__ == "__main__":
     # The database is in data/
     # Relative path from script to db: ../../data/f1_data.db
     base_dir = os.path.dirname(__file__)
-    data_folder_path = os.path.join(base_dir, '..', '..', 'data')
+    data_folder_path = os.path.join(base_dir, '..', '..', 'data', 'f1db_YR=2024')
     
     # Normalize the path to resolve '..' components
     data_folder_path = os.path.normpath(data_folder_path)
 
-    db_file_path = os.path.join(data_folder_path, 'f1_data.db')
+    db_file_path = os.path.join(data_folder_path, 'database.db')
     output_json_path = os.path.join(data_folder_path, 'db_schema.json')
 
 
@@ -94,4 +117,3 @@ if __name__ == "__main__":
             print(json_output)
     else:
         print("Failed to extract database schema.")
-
