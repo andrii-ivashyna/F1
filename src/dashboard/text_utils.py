@@ -1,6 +1,6 @@
 """Text processing utilities for labels and formatting"""
 
-from .settings import LAYOUT_CONFIG
+from settings import LAYOUT_CONFIG
 
 def split_text_multiline(text: str, max_chars: int = None, max_lines: int = None) -> str:
     """Split text into multiple lines for better display"""

@@ -1,6 +1,6 @@
 """Data processing utilities"""
 
-from .settings import LAYOUT_CONFIG
+from settings import LAYOUT_CONFIG
 
 def categorize_fields(data: dict) -> dict:
     """Categorize data fields by type"""

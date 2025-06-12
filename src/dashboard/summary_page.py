@@ -4,9 +4,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from dash import dcc
 from typing import Dict, Any, List
-from .settings import get_colors, CHART_CONFIG
-from .text_utils import format_labels_list, clean_field_name
-from .data_utils import get_base_layout
+from settings import get_colors, CHART_CONFIG
+from text_utils import format_labels_list, clean_field_name
+from data_utils import get_base_layout
 
 class SummaryPage:
     """Creates summary dashboard visualizations"""

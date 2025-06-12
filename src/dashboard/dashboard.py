@@ -3,12 +3,12 @@
 import dash
 from dash import dcc, html, Input, Output
 from typing import Dict, List
-from .settings import get_table_icon
-from .data_loader import DataLoader
-from .summary_page import SummaryPage
-from .table_page import TablePage
-from .data_utils import categorize_fields
-from .text_utils import clean_field_name
+from settings import get_table_icon
+from data_loader import DataLoader
+from summary_page import SummaryPage
+from table_page import TablePage
+from data_utils import categorize_fields
+from text_utils import clean_field_name
 
 class F1Dashboard:
     """Main F1 Dashboard application"""
