@@ -542,7 +542,7 @@ class F1RacePlotter:
         
         try:
             # Delete everything in output folder before starting
-            race_dir = Path("data") / db_name / "dashboard" / "race"
+            race_dir = Path("data") / db_name / "dashboard" / "race_overview"
             if race_dir.exists():
                 shutil.rmtree(race_dir)
                 print(f"🗑️  Cleared output directory: {race_dir}")
