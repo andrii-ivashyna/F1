@@ -2,7 +2,6 @@
 """
 F1 2024 Race Results Dashboard
 =============================
-A streamlined F1 data visualization tool for race results analysis.
 This script serves as the main entry point to generate various plots.
 """
 
@@ -15,6 +14,7 @@ import traceback
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from race_result_plot import F1RaceResultPlotter
+from lap_pit_plot import F1PitStopPlotter
 
 def main():
     """Main application entry point."""
@@ -35,12 +35,22 @@ def main():
     
     try:
         # --- Plot Generation ---
-        # This section can be expanded to call different plot generators.
-        # For now, we generate the Position vs. Grand Prix plot.
+        success_count = 0
+        total_plots = 2
         
+        # Generate Position vs Grand Prix plot
         print(f"\n📊 Generating 'Position vs Grand Prix' Plot...")
         plotter = F1RaceResultPlotter()
         saved_plot_path = plotter.generate_and_save_plot(str(db_path), db_name)
+        if saved_plot_path:
+            success_count += 1
+        
+        # Generate Pit Stop Analysis plot
+        print(f"\n📊 Generating 'Laps vs Pit Stops' Plot...")
+        pit_plotter = F1PitStopPlotter()
+        pit_plot_path = pit_plotter.generate_and_save_plot(str(db_path), db_name)
+        if pit_plot_path:
+            success_count += 1
         
         # --- Future Plotting Calls Would Go Here ---
         # For example:
@@ -48,11 +58,14 @@ def main():
         # team_plotter = F1TeamPlotter()
         # team_plotter.generate_plot(...)
         
-        if saved_plot_path:
-            print(f"\n✅ Dashboard generation completed successfully!")
+        if success_count == total_plots:
+            print(f"\n✅ Dashboard generation completed successfully! ({success_count}/{total_plots} plots generated)")
+            return True
+        elif success_count > 0:
+            print(f"\n⚠️  Dashboard generation partially completed. ({success_count}/{total_plots} plots generated)")
             return True
         else:
-            print(f"\n❌ Dashboard generation failed.")
+            print(f"\n❌ Dashboard generation failed. No plots were generated.")
             return False
         
     except Exception as e:

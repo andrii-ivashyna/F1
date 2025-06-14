@@ -17,7 +17,7 @@ class F1RaceResultPlotter:
     def __init__(self):
         """Initializes the plotter with a predefined style and data loading components."""
         self.f1_colors = {
-            'background': "#F1F1F1", 'grid': '#E0E0E0', 'text': '#000000',
+            'background': "#F1F1F1", 'grid': '#E0E0E0', 'text': "#101010",
             'accent': '#FF1801', 'secondary': '#F5F5F5'
         }
         self.driver_markers = {1: 'o', 2: 's', 3: '^', 4: '*'}
@@ -33,9 +33,11 @@ class F1RaceResultPlotter:
         sns.set_context("notebook", font_scale=1.5)
         plt.rcParams.update({
             'figure.facecolor': self.f1_colors['background'], 'axes.facecolor': self.f1_colors['background'],
-            'axes.edgecolor': self.f1_colors['grid'], 'axes.labelcolor': self.f1_colors['text'],
+            'axes.edgecolor': self.f1_colors['text'], # Changed to black
+            'axes.labelcolor': self.f1_colors['text'],
             'axes.spines.left': True, 'axes.spines.bottom': True, 'axes.spines.top': False, 'axes.spines.right': False,
-            'axes.grid': True, 'axes.grid.axis': 'y', 'grid.color': self.f1_colors['grid'], 'grid.alpha': 0.7,
+            'axes.grid': False, # Changed to False to remove gridlines
+            'axes.grid.axis': 'y', 'grid.color': self.f1_colors['grid'], 'grid.alpha': 0.7, # These lines become less relevant with grid=False
             'text.color': self.f1_colors['text'], 'xtick.color': self.f1_colors['text'], 'ytick.color': self.f1_colors['text'],
             'legend.facecolor': self.f1_colors['background'], 'legend.edgecolor': 'none',
             'font.family': 'monospace', 'font.weight': 'bold', 'font.size': 14
@@ -54,7 +56,7 @@ class F1RaceResultPlotter:
         return pd.read_sql_query(query, self._get_connection(thread_id))
 
     def _load_and_process_data(self) -> pd.DataFrame:
-        print("\n🏎️  Loading and Processing F1 Race Data...")
+        print("🏎️  Loading and Processing F1 Race Data...") # Aligned print format
         
         # 1. Get race sessions
         q_sessions = """
@@ -63,7 +65,9 @@ class F1RaceResultPlotter:
             WHERE s.session_name = 'Race' ORDER BY s.date_start
         """
         race_sessions = self._execute_query(q_sessions, threading.get_ident())
-        if race_sessions.empty: return pd.DataFrame()
+        if race_sessions.empty: 
+            print("❌ No race sessions found!") # Aligned print format
+            return pd.DataFrame()
         session_keys = race_sessions['session_key'].tolist()
 
         # 2. Load position and driver data in parallel
@@ -87,7 +91,9 @@ class F1RaceResultPlotter:
             session_keys, "Loading driver data"
         )
         
-        if positions.empty or drivers.empty: return pd.DataFrame()
+        if positions.empty or drivers.empty: 
+            print("❌ No position or driver data found!") # Aligned print format
+            return pd.DataFrame()
 
         # 3. Process and Merge
         positions['date'] = pd.to_datetime(positions['date'], format='ISO8601')
@@ -98,7 +104,7 @@ class F1RaceResultPlotter:
         results = results.dropna(subset=['position', 'name_acronym', 'team_colour'])
         results['date_start'] = pd.to_datetime(results['date_start'], format='ISO8601')
         
-        print(f"✅ Data loaded successfully: {len(results)} records")
+        print(f"✅ Data processed successfully: {len(results)} records") # Aligned print format
         return results.sort_values(['date_start', 'position'])
 
     # --- Plotting Methods (from original F1Plotter with restored visuals) ---
@@ -123,9 +129,11 @@ class F1RaceResultPlotter:
         self.db_path = db_path
         try:
             plot_data = self._load_and_process_data()
-            if plot_data.empty: print("❌ No race data to plot!"); return None
+            if plot_data.empty: 
+                print("❌ No race data to plot!") # Aligned print format
+                return None
             
-            print("\n🎨 Generating Position vs Grand Prix plot...")
+            print("\n🎨 Generating Position vs Grand Prix plot...") # Aligned print format
             
             # --- Plotting Logic with Restored Visuals ---
             meeting_order = plot_data.groupby('meeting_name')['date_start'].first().sort_values().index
@@ -157,7 +165,7 @@ class F1RaceResultPlotter:
             ax.set_ylabel('Position', fontsize=24, fontweight='bold', color=self.f1_colors['text'], labelpad=20)
             ax.set_ylim(20.5, 0.5); ax.set_yticks(range(1, 21)); ax.set_yticklabels([f'P{i}' for i in range(1, 21)], fontsize=20)
             ax.set_xlim(-0.5, len(meeting_order) - 0.5); ax.set_xticks(range(len(meeting_order))); ax.set_xticklabels(formatted_meetings, rotation=90, ha='center', fontsize=20)
-            ax.grid(True, alpha=0.7, color=self.f1_colors['grid'], linewidth=1.2)
+            ax.grid(False) # Removed gridlines explicitly
             
             legend_elements = [plt.Line2D([0], [0], marker=info['marker'], color=info['color'], label=acronym, markersize=14, linewidth=4, linestyle='-')
                                for acronym, info in sorted(driver_info.items(), key=lambda item: item[1]['number'])]
@@ -168,11 +176,11 @@ class F1RaceResultPlotter:
             plt.tight_layout(rect=[0, 0, 0.9, 1]) # Keep original margin for legend
             
             dashboard_dir = Path("data") / db_name / "dashboard"; dashboard_dir.mkdir(parents=True, exist_ok=True)
-            save_path = dashboard_dir / f"F1_{year}_Driver_Positions_by_Grand_Prix.png"
+            save_path = dashboard_dir / f"F1_{year}_Driver_Positions_vs_Grand_Prix.png"
             plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor=self.f1_colors['background'])
             plt.close(fig)
             
-            print(f"✅ Plot saved to: {save_path}")
+            print(f"✅ Plot saved to: {save_path}") # Aligned print format
             return str(save_path)
         finally:
             self._close_connections()
