@@ -68,7 +68,7 @@ def main():
         # Show final statistics
         print(f"\n📈 Final Statistics:")
         print(f"   • {len(race_data)} race results processed")
-        print(f"   • {race_data['circuit_short_name'].nunique()} circuits analyzed")
+        print(f"   • {race_data['meeting_name'].nunique()} races analyzed")
         print(f"   • {race_data['name_acronym'].nunique()} drivers tracked")
         print(f"   • {race_data['team_name'].nunique()} teams covered")
         print(f"   • Plot saved to: {saved_plot_path}")

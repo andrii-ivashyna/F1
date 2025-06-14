@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
+from typing import Dict, List, Tuple
 from matplotlib.patches import Rectangle
 import matplotlib.patches as mpatches
 from pathlib import Path
@@ -14,28 +15,33 @@ class F1Plotter:
     """
     
     def __init__(self):
-        # F1 Official Color Palette
+        """Initializes the plotter with a predefined style."""
+        # Light theme color palette
         self.f1_colors = {
-            'background': '#15151E',
-            'grid': '#2D2D2D',
-            'text': '#FFFFFF',
+            'background': "#F1F1F1",
+            'grid': '#E0E0E0',
+            'text': '#000000',
             'accent': '#FF1801',
-            'secondary': '#38383F'
+            'secondary': '#F5F5F5'
         }
         
-        # Set up F1 style
+        # Marker styles for different driver priorities within teams
+        self.driver_markers = {
+            1: 'o',  # Circle - first driver
+            2: 's',  # Square - second driver
+            3: '^',  # Triangle - third driver
+            4: '*'   # Star - fourth driver
+        }
+        
+        # Set up the base F1 style for all plots
         self._setup_f1_style()
     
     def _setup_f1_style(self):
-        """Configure matplotlib and seaborn for F1-style plots."""
-        # Set dark theme
-        plt.style.use('dark_background')
-        
-        # Configure seaborn
+        """Configure matplotlib and seaborn for a consistent F1-style plot theme."""
+        plt.style.use('default')
         sns.set_palette("husl")
-        sns.set_context("notebook", font_scale=1.2)
+        sns.set_context("notebook", font_scale=1.5)
         
-        # Configure matplotlib
         plt.rcParams.update({
             'figure.facecolor': self.f1_colors['background'],
             'axes.facecolor': self.f1_colors['background'],
@@ -48,228 +54,238 @@ class F1Plotter:
             'axes.grid': True,
             'axes.grid.axis': 'y',
             'grid.color': self.f1_colors['grid'],
-            'grid.alpha': 0.3,
+            'grid.alpha': 0.7,
             'text.color': self.f1_colors['text'],
             'xtick.color': self.f1_colors['text'],
             'ytick.color': self.f1_colors['text'],
             'legend.facecolor': self.f1_colors['background'],
             'legend.edgecolor': 'none',
             'font.family': 'monospace',
-            'font.weight': 'bold'
+            'font.weight': 'bold',
+            'font.size': 14
         })
-    
-    def _parse_team_colors(self, color_str: str) -> str:
-        """Parse team color string and return valid hex color."""
-        if pd.isna(color_str):
-            return '#888888'
+
+    def _get_driver_legend_and_priority_info(self, data: pd.DataFrame) -> Dict[str, Dict]:
+        """
+        Determines driver priorities and legend attributes based on the first GP and first appearance.
+        This function is the new core logic to fix the priority and legend issues.
         
-        # Clean the color string
-        color = str(color_str).strip()
+        Args:
+            data: DataFrame with all season driver data.
+            
+        Returns:
+            A dictionary where keys are driver acronyms and values are dicts with their
+            legend color, priority, marker, and initial driver number.
+            e.g., {"VER": {"color": "#...", "priority": 1, "marker": "o", "number": 1}}
+        """
+        if 'date_start' not in data.columns:
+            # Fallback if date is not available, though sorting by date is crucial
+            data_sorted = data.copy()
+        else:
+            data_sorted = data.sort_values('date_start').reset_index(drop=True)
+
+        # This dictionary will store the definitive legend info for each driver
+        driver_info = {}
+
+        # Dictionary to store team priorities established in the first race
+        team_priorities_first_race = {}
         
-        # If it's already a hex color, validate it
-        if color.startswith('#'):
-            if len(color) == 7:
-                return color
-            elif len(color) == 4:  # Short hex like #F00
-                return f"#{color[1]*2}{color[2]*2}{color[3]*2}"
+        # 1. Determine priorities from the first race of the season
+        first_race_meeting = data_sorted['meeting_name'].iloc[0]
+        first_race_data = data_sorted[data_sorted['meeting_name'] == first_race_meeting]
         
-        # Common F1 team colors mapping
-        team_colors = {
-            'red': '#FF1801',
-            'blue': '#0033CC',
-            'green': '#00CC00',
-            'orange': '#FF8000',
-            'pink': '#FF69B4',
-            'purple': '#8A2BE2',
-            'yellow': '#FFD700',
-            'silver': '#C0C0C0',
-            'black': '#000000',
-            'white': '#FFFFFF'
-        }
+        teams_in_first_race = first_race_data['team_name'].unique()
         
-        # Try to match common color names
-        color_lower = color.lower()
-        for name, hex_color in team_colors.items():
-            if name in color_lower:
-                return hex_color
+        for team in teams_in_first_race:
+            if pd.isna(team):
+                continue
+            
+            # Get drivers for the team in the first race, sorted by their number
+            team_drivers = first_race_data[first_race_data['team_name'] == team]
+            team_drivers = team_drivers.sort_values('driver_number')
+            
+            # Assign priority 1 (first) and 2 (second)
+            priorities = {}
+            for i, (_, driver_row) in enumerate(team_drivers.iterrows(), 1):
+                priorities[driver_row['name_acronym']] = i
+            team_priorities_first_race[team] = priorities
+
+        # 2. Build the definitive legend info for EVERY driver based on their first appearance
+        # Use drop_duplicates to ensure we only process each driver once
+        unique_drivers_first_appearance = data_sorted.drop_duplicates(subset=['name_acronym'], keep='first')
         
-        # Default fallback
-        return '#888888'
-    
+        for _, row in unique_drivers_first_appearance.iterrows():
+            driver_acronym = row['name_acronym']
+            team_name = row['team_name']
+            
+            priority = 3 # Default to 3 for reserve/replacement drivers
+            
+            # Check if the driver was in the first race for their team to get P1/P2
+            if team_name in team_priorities_first_race:
+                if driver_acronym in team_priorities_first_race[team_name]:
+                    priority = team_priorities_first_race[team_name][driver_acronym]
+            
+            # Clean up team color
+            team_color = row['team_colour']
+            if pd.isna(team_color): team_color = '000000'
+            team_color = str(team_color).strip()
+            if not team_color.startswith('#'): team_color = f'#{team_color}'
+            if len(team_color) != 7: team_color = '#000000'
+
+            # Store the definitive info. This ensures one legend entry per driver.
+            driver_info[driver_acronym] = {
+                'color': team_color,
+                'priority': priority,
+                'marker': self.driver_markers.get(priority, '^'),
+                'number': row['driver_number'] # Store their first number for sorting
+            }
+
+        return driver_info
+
     def _create_save_directory(self, db_name: str) -> Path:
-        """Create the dashboard directory for saving plots."""
+        """Creates the directory for saving plot images."""
         dashboard_dir = Path("data") / db_name / "dashboard"
         dashboard_dir.mkdir(parents=True, exist_ok=True)
         return dashboard_dir
     
+    def _format_meeting_name(self, meeting_name: str) -> str:
+        """Converts 'Italian Grand Prix' to 'Italian GP'."""
+        if pd.isna(meeting_name):
+            return meeting_name
+        return str(meeting_name).replace(" Grand Prix", " GP")
+    
     def plot_position_vs_grandprix(self, data: pd.DataFrame, db_name: str = "f1db_YR=2024"):
         """
-        Create F1-style Position vs Grand Prix plot and save it.
+        Creates and saves the F1 Position vs. Grand Prix plot.
         
         Args:
-            data: DataFrame with columns [circuit_short_name, name_acronym, position, team_colour, full_name]
-            db_name: Database name for creating save directory
+            data: DataFrame with race result data.
+            db_name: Database name used for the save directory.
         """
-        
         if data.empty:
             print("❌ No data to plot!")
             return
         
-        print("🎨 Creating Position vs Grand Prix plot...")
+        print("🎨 Creating Position vs Grand Prix plot with corrected logic...")
         
-        # Create save directory
         dashboard_dir = self._create_save_directory(db_name)
-        
-        # Prepare data
         plot_data = data.copy()
         
-        # Sort circuits by date to maintain race order
+        # Establish a consistent race order based on date
         if 'date_start' in plot_data.columns:
-            circuit_order = plot_data.sort_values('date_start')['circuit_short_name'].unique()
+            meeting_order = plot_data.groupby('meeting_name')['date_start'].first().sort_values().index.tolist()
         else:
-            circuit_order = sorted(plot_data['circuit_short_name'].unique())
+            meeting_order = sorted(plot_data['meeting_name'].unique())
         
-        # Create figure with F1 proportions
-        fig, ax = plt.subplots(figsize=(20, 12))
+        formatted_meeting_order = [self._format_meeting_name(name) for name in meeting_order]
+        
+        fig, ax = plt.subplots(figsize=(30, 20))
         fig.patch.set_facecolor(self.f1_colors['background'])
         
-        # Get unique drivers and assign colors
-        drivers = plot_data['name_acronym'].unique()
-        driver_colors = {}
+        # Get the definitive driver info for legend and priorities
+        driver_info = self._get_driver_legend_and_priority_info(plot_data)
         
-        # Group by driver and get their team color
-        for driver in drivers:
-            driver_data = plot_data[plot_data['name_acronym'] == driver]
-            team_color = driver_data['team_colour'].iloc[0]
-            driver_colors[driver] = self._parse_team_colors(team_color)
+        # Get unique drivers and sort them by their initial driver number for a consistent legend order
+        drivers_sorted_by_number = sorted(driver_info.keys(), key=lambda d: driver_info[d]['number'])
         
-        # Plot lines for each driver
-        for driver in drivers:
-            driver_data = plot_data[plot_data['name_acronym'] == driver]
+        # Plot data for each driver
+        for driver_acronym in drivers_sorted_by_number:
+            driver_season_data = plot_data[plot_data['name_acronym'] == driver_acronym]
             
-            # Prepare x and y data
-            x_data = []
-            y_data = []
+            x_data, y_data, colors_data = [], [], []
             
-            for circuit in circuit_order:
-                circuit_data = driver_data[driver_data['circuit_short_name'] == circuit]
-                if not circuit_data.empty:
-                    x_data.append(circuit)
-                    y_data.append(circuit_data['position'].iloc[0])
+            for i, meeting in enumerate(meeting_order):
+                race_data = driver_season_data[driver_season_data['meeting_name'] == meeting]
+                if not race_data.empty:
+                    x_data.append(i)
+                    y_data.append(race_data['position'].iloc[0])
+                    
+                    team_color = race_data['team_colour'].iloc[0]
+                    if pd.isna(team_color): team_color = '000000'
+                    team_color = str(team_color).strip()
+                    if not team_color.startswith('#'): team_color = f'#{team_color}'
+                    if len(team_color) != 7: team_color = "#000000"
+                    colors_data.append(team_color)
             
             if x_data and y_data:
-                # Plot line with square markers
-                ax.plot(x_data, y_data, 
-                       color=driver_colors[driver], 
-                       marker='s',  # Square marker
-                       markersize=8,
-                       linewidth=2.5,
-                       alpha=0.8,
-                       label=driver)
+                # Plot line segments with color of the destination point
+                for i in range(len(x_data) - 1):
+                    ax.plot([x_data[i], x_data[i+1]], 
+                           [y_data[i], y_data[i+1]],
+                           color=colors_data[i+1], # Line takes color of the upcoming race
+                           linewidth=3.5, alpha=0.7, zorder=1)
+                
+                # Plot markers for each race result
+                marker_for_driver = driver_info[driver_acronym]['marker']
+                for x, y, color in zip(x_data, y_data, colors_data):
+                    ax.scatter(x, y, color=color, marker=marker_for_driver,
+                               s=140, alpha=0.9, linewidth=1.5, zorder=2)
         
-        # Customize the plot
-        ax.set_xlabel('Grand Prix', fontsize=16, fontweight='bold', color=self.f1_colors['text'])
-        ax.set_ylabel('Position', fontsize=16, fontweight='bold', color=self.f1_colors['text'])
+        # Customize the plot aesthetics
+        ax.set_xlabel('Grand Prix', fontsize=24, fontweight='bold', color=self.f1_colors['text'], labelpad=20)
+        ax.set_ylabel('Position', fontsize=24, fontweight='bold', color=self.f1_colors['text'], labelpad=20)
         
-        # Generate title from data
-        year = "2024"
-        if 'date_start' in plot_data.columns and not plot_data['date_start'].empty:
-            first_date = pd.to_datetime(plot_data['date_start'].iloc[0])
-            year = str(first_date.year)
+        year = pd.to_datetime(data['date_start'].min()).year if 'date_start' in data.columns else "Season"
+        title = f'F1 {year} - Driver Positions by Grand Prix'
+        ax.set_title(title, fontsize=30, fontweight='bold', color=self.f1_colors['text'], pad=20)
         
-        title = f'F1 {year} Season - Driver Positions by Grand Prix'
-        ax.set_title(title, fontsize=24, fontweight='bold', color=self.f1_colors['text'], pad=20)
-        
-        # Invert y-axis (position 1 at top)
         ax.invert_yaxis()
-        
-        # Set y-axis limits and ticks
         ax.set_ylim(20.5, 0.5)
         ax.set_yticks(range(1, 21))
-        ax.set_yticklabels([f'P{i}' for i in range(1, 21)], fontsize=12)
+        ax.set_yticklabels([f'P{i}' for i in range(1, 21)], fontsize=20)
         
-        # Rotate x-axis labels
-        ax.set_xticks(range(len(circuit_order)))
-        ax.set_xticklabels(circuit_order, rotation=90, ha='center', fontsize=11)
+        ax.set_xlim(-0.5, len(meeting_order) - 0.5)
+        ax.set_xticks(range(len(meeting_order)))
+        ax.set_xticklabels(formatted_meeting_order, rotation=90, ha='center', fontsize=20)
         
-        # Add grid
-        ax.grid(True, alpha=0.3, color=self.f1_colors['grid'])
+        ax.grid(True, alpha=0.7, color=self.f1_colors['grid'], linewidth=1.2)
         ax.set_axisbelow(True)
         
-        # Create legend with driver acronyms
-        legend_elements = [
-            plt.Line2D([0], [0], marker='s', color=driver_colors[driver], 
-                      label=f'{driver}', markersize=10, linewidth=3, linestyle='-')
-            for driver in sorted(drivers)
-        ]
+        # Create a clean legend using the definitive driver_info
+        legend_elements = []
+        for driver_acronym in drivers_sorted_by_number:
+            info = driver_info[driver_acronym]
+            legend_elements.append(
+                plt.Line2D([0], [0], marker=info['marker'], color=info['color'], 
+                          label=driver_acronym, markersize=14, linewidth=4, linestyle='-')
+            )
         
-        # Position legend outside the plot
-        legend = ax.legend(handles=legend_elements, 
-                          loc='center left', 
-                          bbox_to_anchor=(1.02, 0.5),
-                          frameon=False,
-                          fontsize=14,
-                          title='Drivers',
-                          title_fontsize=16)
+        legend = ax.legend(handles=legend_elements, loc='center left', bbox_to_anchor=(1.02, 0.5),
+                          frameon=False, fontsize=20, title='Drivers', title_fontsize=24,
+                          handletextpad=1.2, columnspacing=2)
         
-        # Style legend
         legend.get_title().set_color(self.f1_colors['text'])
         legend.get_title().set_fontweight('bold')
-        
         for text in legend.get_texts():
             text.set_color(self.f1_colors['text'])
             text.set_fontweight('bold')
         
-        # Add F1 branding
-        ax.text(0.02, 0.98, 'FORMULA 1®', transform=ax.transAxes, 
-                fontsize=10, fontweight='bold', color=self.f1_colors['accent'],
-                verticalalignment='top')
+        plt.tight_layout(rect=[0, 0, 0.9, 1]) # Adjust layout to make space for legend
         
-        # Add race count info
-        race_count = len(circuit_order)
-        driver_count = len(drivers)
-        ax.text(0.02, 0.02, f'{race_count} Races • {driver_count} Drivers', 
-                transform=ax.transAxes, fontsize=10, 
-                color=self.f1_colors['text'], alpha=0.7)
-        
-        # Adjust layout
-        plt.tight_layout()
-        
-        # Save plot with title as filename
-        safe_title = title.replace(' ', '_').replace('-', '_').replace('/', '_')
-        save_path = dashboard_dir / f"{safe_title}.png"
-        
-        plt.savefig(save_path, dpi=300, bbox_inches='tight', 
-                   facecolor=self.f1_colors['background'])
+        save_path = dashboard_dir / f"{title.replace(' ', '_')}.png"
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor=self.f1_colors['background'])
         
         print(f"💾 Plot saved to: {save_path}")
-        
-        # Close the figure to free memory
         plt.close(fig)
         
         print("✅ Position vs Grand Prix plot created successfully!")
-        
         return str(save_path)
     
     def get_plot_summary(self, data: pd.DataFrame):
-        """Print summary statistics for the plot data."""
+        """Prints a summary of the data used for the plot."""
         if data.empty:
             print("No data available for summary.")
             return
         
         print("\n📊 Plot Data Summary:")
         print("=" * 40)
-        print(f"🏁 Total Races: {data['circuit_short_name'].nunique()}")
+        print(f"🏁 Total Races: {data['meeting_name'].nunique()}")
         print(f"🏎️  Total Drivers: {data['name_acronym'].nunique()}")
         print(f"🏆 Total Teams: {data['team_name'].nunique()}")
-        print(f"📈 Total Results: {len(data)}")
         
-        # Show circuits
-        circuits = sorted(data['circuit_short_name'].unique())
-        print(f"\n🏁 Circuits: {', '.join(circuits)}")
-        
-        # Show drivers
-        drivers = sorted(data['name_acronym'].unique())
-        print(f"\n🏎️  Drivers: {', '.join(drivers)}")
+        if 'date_start' in data.columns:
+            driver_info = self._get_driver_legend_and_priority_info(data)
+            drivers_sorted = sorted(driver_info.keys(), key=lambda d: driver_info[d]['number'])
+            print(f"\n🏎️  Drivers (by number): {', '.join(drivers_sorted)}")
         
         print("=" * 40)

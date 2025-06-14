@@ -133,7 +133,7 @@ class F1DataLoader:
         
         driver_dfs = []
         
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             with tqdm(desc="Loading driver data", total=len(batches), unit="batch") as pbar:
                 future_to_batch = {
                     executor.submit(fetch_drivers_batch, batch, i): batch 
@@ -148,17 +148,11 @@ class F1DataLoader:
                     except Exception as e:
                         print(f"Error loading driver batch: {e}")
         
-        # Combine and deduplicate
+        # Combine all driver dataframes
         combined_df = pd.concat(driver_dfs, ignore_index=True) if driver_dfs else pd.DataFrame()
         
         if not combined_df.empty:
-            # Remove duplicates, keeping the most recent entry per driver
-            drivers_unique = combined_df.drop_duplicates(
-                subset=['driver_number'], 
-                keep='last'
-            )
-            print(f"✓ Loaded {len(drivers_unique)} unique drivers")
-            return drivers_unique
+            print(f"✓ Loaded {len(combined_df)} driver-session records")
         
         return combined_df
     
@@ -166,7 +160,7 @@ class F1DataLoader:
         """
         Load complete race results data optimized for Position vs Grand Prix plot.
         Returns a DataFrame with columns: circuit_short_name, driver_number, name_acronym, 
-        full_name, team_name, team_colour, position, date_start
+        full_name, team_name, team_colour, position, date_start, meeting_name
         """
         
         print("🏎️  Loading F1 2024 Race Results Data...")
@@ -184,7 +178,7 @@ class F1DataLoader:
         # Step 2: Load position and driver data in parallel
         print("\n📊 Loading race data with multithreading...")
         
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             position_future = executor.submit(self.load_position_data, session_keys)
             driver_future = executor.submit(self.load_driver_data, session_keys)
             
@@ -198,7 +192,7 @@ class F1DataLoader:
         # Step 3: Merge all data
         print("\n🔄 Combining race results...")
         with tqdm(desc="Merging data", unit="step") as pbar:
-            # Merge positions with race sessions
+            # Merge positions with race sessions to get circuit and meeting info
             results = positions_df.merge(
                 race_sessions[['session_key', 'circuit_short_name', 'date_start', 'meeting_name']], 
                 on='session_key', 
@@ -206,10 +200,11 @@ class F1DataLoader:
             )
             pbar.update(1)
             
-            # Merge with driver information
+            # Merge with driver information on both session_key and driver_number
+            # This ensures the correct team_colour for each specific race is used
             results = results.merge(
-                drivers_df[['driver_number', 'name_acronym', 'full_name', 'team_name', 'team_colour']], 
-                on='driver_number', 
+                drivers_df, 
+                on=['session_key', 'driver_number'], 
                 how='left'
             )
             pbar.update(1)
