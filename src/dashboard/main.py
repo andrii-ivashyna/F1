@@ -13,7 +13,7 @@ import traceback
 # Add the current directory to Python path for local imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from race_result_plot import F1RaceResultPlotter
+from dashboard.position_plot import F1RaceResultPlotter
 from lap_pit_plot import F1PitStopPlotter
 
 def main():
