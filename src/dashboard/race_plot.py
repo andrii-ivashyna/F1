@@ -512,7 +512,7 @@ class F1RacePlotter:
             plt.tight_layout()
             
             # Create save directory
-            race_dir = Path("data") / db_name / "dashboard" / "race"
+            race_dir = Path("data") / db_name / "dashboard" / "race_overview"
             race_dir.mkdir(parents=True, exist_ok=True)
             
             # Clean meeting name for filename
