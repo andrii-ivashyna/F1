@@ -1,14 +1,40 @@
 # config.py
 
+import os
+import sqlite3
+from datetime import datetime
+
 # --- Application Configuration ---
 DB_FILE = 'data/formula.db'
 API_BASE_URL = 'https://api.openf1.org/v1'
 YEARS = [2025] # Fetch data for these years
 
+# --- Logging Helper ---
+def log(message):
+    """Prints a message with a timestamp."""
+    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
+
+# --- Database Setup Function ---
+def create_database():
+    """Creates the database and tables using the schema defined below."""
+    log("Initializing database...")
+    if not os.path.exists('data'):
+        os.makedirs('data')
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    log("Dropping existing tables...")
+    for table_name in TABLES_TO_DROP:
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
+
+    log("Creating tables with the new structure...")
+    for create_statement in CREATE_TABLE_STATEMENTS:
+        cursor.execute(create_statement)
+    conn.commit()
+    conn.close()
+    log("Database and tables created successfully.")
 
 # --- Database Structure ---
-
-# List of tables in the order they should be dropped to avoid foreign key constraint errors.
 TABLES_TO_DROP = [
     "session_driver",
     "meeting_driver",
@@ -20,7 +46,6 @@ TABLES_TO_DROP = [
     "country",
 ]
 
-# List of CREATE TABLE statements in the order they should be executed.
 CREATE_TABLE_STATEMENTS = [
     """
     CREATE TABLE country (
@@ -34,8 +59,8 @@ CREATE_TABLE_STATEMENTS = [
         circuit_name VARCHAR(30),
         circuit_official_name VARCHAR(100),
         location VARCHAR(50),
-        type VARCHAR(20),
-        direction VARCHAR(20),
+        type TEXT CHECK(type IN ('street', 'race')),
+        direction TEXT CHECK(direction IN ('clockwise', 'anti-clockwise', 'both')),
         length_km FLOAT,
         turns SMALLINT,
         gmt_offset VARCHAR(6),
