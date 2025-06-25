@@ -17,18 +17,51 @@ def log(message):
 def main():
     """
     Main function to run the full data fetching and enrichment process.
+    Usage:
+    python main.py                    - Run full process (create DB, fetch API, parse Wikipedia)
+    python main.py api                - Only fetch API data (creates DB first)
+    python main.py wiki               - Only parse Wikipedia data (all parsers)
+    python main.py circuits           - Only parse Wikipedia circuit data
+    python main.py constructors       - Only parse Wikipedia constructor data
     """
     try:
-        log("=== Starting the Formula 1 data setup process ===")
-        
-        # Step 1: Create database schema
-        config.create_database()
-        
-        # Step 2: Populate database with data from the OpenF1 API
-        fetch_api.populate_database()
-        
-        # Step 3: Enrich the database with data from Wikipedia
-        parse_wiki.run_wiki_parsers()
+        # Check command line arguments
+        if len(sys.argv) > 1:
+            command = sys.argv[1].lower()
+            
+            if command == 'api':
+                log("=== Running API data fetching only ===")
+                config.create_database()
+                fetch_api.populate_database()
+                
+            elif command == 'wiki':
+                log("=== Running Wikipedia parsing only ===")
+                parse_wiki.run_wiki_parsers()
+                
+            elif command == 'circuits':
+                log("=== Running Wikipedia circuit parsing only ===")
+                parse_wiki.parse_circuits()
+                
+            elif command == 'constructors':
+                log("=== Running Wikipedia constructor parsing only ===")
+                parse_wiki.parse_constructors()
+                
+            else:
+                log(f"Unknown command: {command}")
+                log("Available commands: api, wiki, circuits, constructors")
+                sys.exit(1)
+        else:
+            # Default: run full process
+            log("=== Starting the Formula 1 data setup process ===")
+            
+            # Step 1: Create database schema
+            config.create_database()
+            
+            # Step 2: Populate database with data from the OpenF1 API
+            fetch_api.populate_database()
+            
+            # Step 3: Enrich the database with data from Wikipedia
+            parse_wiki.run_wiki_parsers()
         
         log("=== Process finished successfully. ===")
         
