@@ -21,7 +21,7 @@ def main():
     try:
         log("=== Starting the Formula 1 data setup process ===")
         
-        # Step 1: Create database schema (function now called from config)
+        # Step 1: Create database schema
         config.create_database()
         
         # Step 2: Populate database with data from the OpenF1 API

@@ -102,9 +102,9 @@ CREATE_TABLE_STATEMENTS = [
     """,
     """
     CREATE TABLE driver (
-        driver_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        driver_acronym CHAR(3),
-        driver_name VARCHAR(60) UNIQUE,
+        driver_code CHAR(3) PRIMARY KEY,
+        driver_name VARCHAR(60),
+        driver_number SMALLINT,
         country_fk CHAR(3),
         FOREIGN KEY (country_fk) REFERENCES country(country_code)
     );
@@ -112,22 +112,22 @@ CREATE_TABLE_STATEMENTS = [
     """
     CREATE TABLE meeting_driver (
         meeting_fk SMALLINT,
-        driver_fk INTEGER,
+        driver_fk CHAR(3),
         team_fk INTEGER,
         driver_number SMALLINT,
         PRIMARY KEY (meeting_fk, driver_fk),
         FOREIGN KEY (meeting_fk) REFERENCES meeting(meeting_key),
-        FOREIGN KEY (driver_fk) REFERENCES driver(driver_id),
+        FOREIGN KEY (driver_fk) REFERENCES driver(driver_code),
         FOREIGN KEY (team_fk) REFERENCES team(team_id)
     );
     """,
     """
     CREATE TABLE session_driver (
         session_fk SMALLINT,
-        driver_fk INTEGER,
+        driver_fk CHAR(3),
         PRIMARY KEY (session_fk, driver_fk),
         FOREIGN KEY (session_fk) REFERENCES session(session_key),
-        FOREIGN KEY (driver_fk) REFERENCES driver(driver_id)
+        FOREIGN KEY (driver_fk) REFERENCES driver(driver_code)
     );
     """
 ]
