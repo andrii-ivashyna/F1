@@ -62,9 +62,11 @@ CREATE_TABLE_STATEMENTS = [
         type TEXT CHECK(type IN ('street', 'race')),
         direction TEXT CHECK(direction IN ('clockwise', 'anti-clockwise', 'both')),
         length_km FLOAT,
+        laps SMALLINT,
         turns SMALLINT,
         gmt_offset VARCHAR(6),
         country_fk CHAR(3),
+        circuit_map_url VARCHAR(255),
         FOREIGN KEY (country_fk) REFERENCES country(country_code)
     );
     """,
@@ -97,6 +99,8 @@ CREATE_TABLE_STATEMENTS = [
         power_unit VARCHAR(30),
         chassis VARCHAR(30),
         country_fk CHAR(3),
+        team_logo_url VARCHAR(255),
+        team_car_url VARCHAR(255),
         FOREIGN KEY (country_fk) REFERENCES country(country_code)
     );
     """,
