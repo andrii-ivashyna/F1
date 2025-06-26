@@ -7,145 +7,81 @@ import re
 from bs4 import BeautifulSoup
 from io import StringIO
 import config
-from fetch_api import log, get_country_code
+from config import log
+from fetch_api import get_country_code
+
+def run_team_parsers():
+    """Runs all team parsers."""
+    log("Enriching Team Data", 'HEADING')
+    parse_team_wiki()
+    parse_team_f1()
 
 def parse_team_wiki():
     """Parses Wikipedia for F1 constructor data and updates the database."""
-    log("Starting Wikipedia constructor parsing...")
+    log("Parsing from Wikipedia", 'SUBHEADING')
     url = "https://en.wikipedia.org/wiki/List_of_Formula_One_constructors"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Find the first table with constructor data
+        soup = BeautifulSoup(response.text, 'lxml')
         table = soup.find('table', {'class': 'wikitable'})
-        if not table:
-            log("ERROR: Could not find constructor table on Wikipedia page")
-            return
-            
-        # Read the table with pandas
         constructors_df = pd.read_html(StringIO(str(table)))[0]
         
-        # Check if 'Constructor' column exists, if not check other possible column names
-        constructor_column = None
-        for col in constructors_df.columns:
-            if 'constructor' in str(col).lower():
-                constructor_column = col
-                break
-        
-        if constructor_column is None:
-            log(f"ERROR: Could not find Constructor column. Available columns: {list(constructors_df.columns)}")
+        col = next((c for c in constructors_df.columns if 'constructor' in str(c).lower()), None)
+        if not col:
+            log("Could not find 'Constructor' column.", 'ERROR', data={'available': list(constructors_df.columns)})
             return
 
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
-
-        # Get current teams from database
         db_teams = cursor.execute("SELECT team_id, team_name FROM team").fetchall()
 
-        for index, row in constructors_df.iterrows():
-            constructor_name = str(row[constructor_column]).strip()
-            licensed_in = str(row.get('Licensed in', '')).strip()
+        for _, row in constructors_df.iterrows():
+            name = re.sub(r'\[.*?\]', '', str(row[col])).strip()
+            country = re.sub(r'\[.*?\]', '', str(row.get('Licensed in', ''))).strip()
+            if name in ['nan', '', 'NaN']: continue
             
-            # Remove brackets and content inside them
-            constructor_name = re.sub(r'\[.*?\]', '', constructor_name).strip()
-            licensed_in = re.sub(r'\[.*?\]', '', licensed_in).strip()
+            variants = [p.strip() for p in re.split(r'[/\n]+', name) if p.strip()]
+            code = get_country_code(country) if country not in ['nan', '', 'NaN'] else None
+            if code: cursor.execute("INSERT OR IGNORE INTO country (country_code, country_name) VALUES (?, ?)", (code, country))
             
-            # Skip if constructor_name is NaN or empty
-            if constructor_name in ['nan', '', 'NaN']:
-                continue
-                
-            # Handle multi-line constructor names (separated by / and newlines)
-            constructor_variants = []
-            # Split by both / and newlines, then clean up
-            parts = re.split(r'[/\n]+', constructor_name)
-            for part in parts:
-                clean_part = part.strip()
-                if clean_part and clean_part not in ['nan', '', 'NaN']:
-                    constructor_variants.append(clean_part)
-            
-            # Get country code from "Licensed in" column
-            country_code = None
-            if licensed_in and licensed_in not in ['nan', '', 'NaN']:
-                country_code = get_country_code(licensed_in)
-                if country_code:
-                    # Add country to database if it doesn't exist
-                    cursor.execute("INSERT OR IGNORE INTO country (country_code, country_name) VALUES (?, ?)", 
-                                 (country_code, licensed_in))
-            
-            # Match with database teams
             for team_id, team_name in db_teams:
-                if not team_name:
-                    continue
-                    
-                # Get first word of team name from database
-                db_first_word = team_name.split()[0].lower()
-                
-                # Check if any constructor variant starts with the same word
-                for constructor_variant in constructor_variants:
-                    constructor_first_word = constructor_variant.split()[0].lower()
-                    
-                    if db_first_word == constructor_first_word:
-                        log(f"  Updating team '{team_name}' with constructor name '{constructor_variant}' and country '{licensed_in}'")
-                        
-                        # Update team with constructor name and country
-                        cursor.execute("""
-                            UPDATE team 
-                            SET team_name = ?, country_fk = ?
-                            WHERE team_id = ?
-                        """, (constructor_variant, country_code, team_id))
-                        break
-
+                if team_name and any(v.split()[0].lower() == team_name.split()[0].lower() for v in variants):
+                    variant = next(v for v in variants if v.split()[0].lower() == team_name.split()[0].lower())
+                    update_data = {'team_name': variant, 'country_fk': code}
+                    log(f"Updating '{team_name}'", 'DATA', indent=1, data=update_data)
+                    cursor.execute("UPDATE team SET team_name = ?, country_fk = COALESCE(?, country_fk) WHERE team_id = ?", (variant, code, team_id))
+                    break # Move to the next row in DataFrame
         conn.commit()
         conn.close()
-        log("Wikipedia constructor parsing finished.")
-
     except Exception as e:
-        log(f"ERROR: Could not parse constructor data from Wikipedia. Reason: {e}")
+        log("Could not parse constructor data from Wikipedia.", 'ERROR', data={'reason': str(e)})
 
 def parse_team_f1():
-    """Parses F1 official site for team data and updates the database."""
-    log("Starting F1 official site team parsing...")
-    
+    """Parses F1 official site for team data."""
+    log("Parsing from Formula1.com", 'SUBHEADING')
     try:
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
-
-        # Get current teams from database
         db_teams = cursor.execute("SELECT team_id, team_name FROM team").fetchall()
         
         for team_id, team_name in db_teams:
-            if not team_name:
-                continue
-                
-            # Convert team name to URL format (lowercase, spaces to dashes)
-            team_url_name = team_name.lower().replace(' ', '-').replace('&', 'and')
+            if not team_name: continue
+
+            # Generate URL slug from team name (lowercase with dashes)
+            url_name = team_name.lower().replace(' ', '-')
+            f1_url = f"https://www.formula1.com/en/teams/{url_name}"
             
-            # Special cases for team URL names
-            team_url_mappings = {
-                'rb': 'rb-f1-team',
-                'visa-cashapp-rb': 'rb-f1-team',
-                'haas-f1-team': 'haas-f1-team',
-                'kick-sauber': 'kick-sauber',
-                'williams': 'williams'
-            }
-            
-            # Apply mappings if team name matches
-            if team_url_name in team_url_mappings:
-                team_url_name = team_url_mappings[team_url_name]
-            
-            # Construct F1 team URL
-            f1_team_url = f"https://www.formula1.com/en/teams/{team_url_name}"
-            
-            log(f"  Parsing F1 data for team '{team_name}' from {f1_team_url}")
+            log(f"Requesting data for '{team_name}' from {f1_url}", 'INFO', indent=1)
             
             try:
-                response = requests.get(f1_team_url, timeout=15)
+                response = requests.get(f1_url, timeout=15)
+                if response.status_code == 404:
+                    log("Page not found (404), skipping.", 'WARNING', indent=2)
+                    continue
                 response.raise_for_status()
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, 'lxml')
                 
-                # Initialize team data
                 team_official_name = None
                 power_unit = None
                 chassis = None
@@ -153,96 +89,85 @@ def parse_team_f1():
                 team_car_url = None
                 
                 # Find Full Team Name
-                full_name_element = soup.find(text=re.compile(r'Full Team Name', re.IGNORECASE))
-                if full_name_element:
-                    # Look for the next text element or sibling that contains the team name
-                    parent = full_name_element.parent
+                full_name_elem = soup.find(string=re.compile(r'Full Team Name', re.I))
+                if full_name_elem:
+                    parent = full_name_elem.find_parent()
                     if parent:
-                        # Try to find the value in various ways
-                        next_element = parent.find_next()
-                        if next_element:
-                            team_official_name = next_element.get_text(strip=True)
+                        # Look for next sibling or nearby element containing the team name
+                        next_elem = parent.find_next_sibling()
+                        if next_elem:
+                            team_official_name = next_elem.get_text(strip=True)
                 
                 # Find Power Unit
-                power_unit_element = soup.find(text=re.compile(r'Power Unit', re.IGNORECASE))
-                if power_unit_element:
-                    parent = power_unit_element.parent
+                power_unit_elem = soup.find(string=re.compile(r'Power Unit', re.I))
+                if power_unit_elem:
+                    parent = power_unit_elem.find_parent()
                     if parent:
-                        next_element = parent.find_next()
-                        if next_element:
-                            power_unit = next_element.get_text(strip=True)
+                        next_elem = parent.find_next_sibling()
+                        if next_elem:
+                            power_unit = next_elem.get_text(strip=True)
                 
                 # Find Chassis
-                chassis_element = soup.find(text=re.compile(r'Chassis', re.IGNORECASE))
-                if chassis_element:
-                    parent = chassis_element.parent
+                chassis_elem = soup.find(string=re.compile(r'Chassis', re.I))
+                if chassis_elem:
+                    parent = chassis_elem.find_parent()
                     if parent:
-                        next_element = parent.find_next()
-                        if next_element:
-                            chassis = next_element.get_text(strip=True)
+                        next_elem = parent.find_next_sibling()
+                        if next_elem:
+                            chassis = next_elem.get_text(strip=True)
                 
-                # Find team logo (look for images with team logo keywords)
-                logo_img = soup.find('img', alt=re.compile(r'logo', re.IGNORECASE))
+                # Find team logo URL - updated selector based on provided HTML
+                logo_img = soup.find('img', class_='relative z-40 h-px-32')
                 if not logo_img:
-                    # Try different selectors for logo
-                    logo_img = soup.find('img', src=re.compile(r'logo', re.IGNORECASE))
-                if logo_img:
-                    logo_src = logo_img.get('src', '')
-                    if logo_src:
-                        if logo_src.startswith('//'):
-                            team_logo_url = 'https:' + logo_src
-                        elif logo_src.startswith('/'):
-                            team_logo_url = 'https://www.formula1.com' + logo_src
-                        elif logo_src.startswith('http'):
-                            team_logo_url = logo_src
+                    # Fallback: try to find img with class containing 'z-40' and 'h-px-32'
+                    logo_img = soup.find('img', class_=re.compile(r'.*z-40.*h-px-32.*'))
+                if not logo_img:
+                    # Another fallback: look for img with src containing team logo pattern
+                    logo_img = soup.find('img', src=re.compile(r'.*logo.*', re.I))
                 
-                # Find team car image (look for images with car keywords)
-                car_img = soup.find('img', alt=re.compile(r'car', re.IGNORECASE))
+                if logo_img and (src := logo_img.get('src')):
+                    team_logo_url = src if src.startswith('http') else 'https://www.formula1.com' + src
+                
+                # Find team car URL - updated selector based on provided HTML
+                car_img = soup.find('img', class_=re.compile(r'.*z-40.*max-w-full.*max-h-\[90px\].*'))
                 if not car_img:
-                    # Try different selectors for car
-                    car_img = soup.find('img', src=re.compile(r'car', re.IGNORECASE))
-                if car_img:
-                    car_src = car_img.get('src', '')
-                    if car_src:
-                        if car_src.startswith('//'):
-                            team_car_url = 'https:' + car_src
-                        elif car_src.startswith('/'):
-                            team_car_url = 'https://www.formula1.com' + car_src
-                        elif car_src.startswith('http'):
-                            team_car_url = car_src
+                    # Fallback: try to find img with class containing car-related patterns
+                    car_img = soup.find('img', class_=re.compile(r'.*max-w-full.*max-h-.*'))
+                if not car_img:
+                    # Another fallback: look for img with src containing car pattern
+                    car_img = soup.find('img', src=re.compile(r'.*car.*', re.I))
                 
-                # Update database if we found any data
-                if any([team_official_name, power_unit, chassis, team_logo_url, team_car_url]):
-                    log(f"  Found data for '{team_name}': official_name={team_official_name}, power_unit={power_unit}, chassis={chassis}")
+                if car_img and (src := car_img.get('src')):
+                    team_car_url = src if src.startswith('http') else 'https://www.formula1.com' + src
+                
+                update_data = {}
+                if team_official_name:
+                    update_data['team_official_name'] = team_official_name
+                if power_unit:
+                    update_data['power_unit'] = power_unit
+                if chassis:
+                    update_data['chassis'] = chassis
+                if team_logo_url:
+                    update_data['team_logo_url'] = team_logo_url
+                if team_car_url:
+                    update_data['team_car_url'] = team_car_url
+                
+                if update_data:
+                    log("Found data", 'DATA', indent=2, data=update_data)
                     cursor.execute("""
-                        UPDATE team
-                        SET team_official_name = COALESCE(?, team_official_name),
-                            power_unit = COALESCE(?, power_unit),
-                            chassis = COALESCE(?, chassis),
-                            team_logo_url = COALESCE(?, team_logo_url),
-                            team_car_url = COALESCE(?, team_car_url)
+                        UPDATE team SET 
+                        team_official_name = COALESCE(?, team_official_name), 
+                        power_unit = COALESCE(?, power_unit), 
+                        chassis = COALESCE(?, chassis), 
+                        team_logo_url = COALESCE(?, team_logo_url), 
+                        team_car_url = COALESCE(?, team_car_url)
                         WHERE team_id = ?
                     """, (team_official_name, power_unit, chassis, team_logo_url, team_car_url, team_id))
                 else:
-                    log(f"  No team data found for '{team_name}' at {f1_team_url}")
-                    
-            except requests.exceptions.RequestException as e:
-                log(f"  ERROR: Could not fetch data from {f1_team_url}. Reason: {e}")
-                continue
+                    log("No new data found on page.", 'WARNING', indent=2)
             except Exception as e:
-                log(f"  ERROR: Could not parse data from {f1_team_url}. Reason: {e}")
-                continue
-        
+                log("Could not fetch or parse data.", 'ERROR', indent=2, data={'error': str(e)})
         conn.commit()
         conn.close()
-        log("F1 official site team parsing finished.")
-
     except Exception as e:
-        log(f"ERROR: Could not parse team data from F1 official site. Reason: {e}")
-
-def run_team_parsers():
-    """Runs all team parsers."""
-    log("--- Starting Team Data Enrichment ---")
-    parse_team_wiki()
-    parse_team_f1()
-    log("--- Team Data Enrichment Finished ---")
+        log("Could not parse team data from F1 site.", 'ERROR', data={'reason': str(e)})

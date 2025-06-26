@@ -7,203 +7,112 @@ import re
 from bs4 import BeautifulSoup
 from io import StringIO
 import config
-from fetch_api import log
+from config import log
+
+def run_circuit_parsers():
+    """Runs all circuit parsers."""
+    log("Enriching Circuit Data", 'HEADING')
+    parse_circuit_wiki()
+    parse_circuit_f1()
 
 def parse_circuit_wiki():
     """Parses Wikipedia for F1 circuit data and updates the database."""
-    log("Starting Wikipedia circuit parsing...")
+    log("Parsing from Wikipedia", 'SUBHEADING')
     url = "https://en.wikipedia.org/wiki/List_of_Formula_One_circuits"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(response.text, 'lxml')
         
         table = soup.find('table', {'class': 'wikitable sortable'})
-        # Use StringIO to fix pandas FutureWarning
         circuits_df = pd.read_html(StringIO(str(table)))[0]
 
-        # 1. Get data only from rows that have * in the end of Circuit column
         active_circuits_df = circuits_df[circuits_df['Circuit'].str.strip().str.endswith('*')].copy()
+        log(f"Found {len(active_circuits_df)} active circuits on Wikipedia.", 'SUCCESS', indent=1)
 
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
+        db_circuits = cursor.execute("SELECT circuit_key, circuit_name FROM circuit").fetchall()
 
-        db_circuits = cursor.execute("SELECT circuit_key, circuit_name, location FROM circuit").fetchall()
-
-        for index, row in active_circuits_df.iterrows():
-            wiki_circuit_name = str(row['Circuit'])
-            wiki_location = str(row['Location'])
-            
-            # 2. Check logic for parsing data about circuits
-            for circuit_key, db_circuit_name, db_location in db_circuits:
-                # Match if db_name is in location, otherwise if it's in the circuit name
-                match = False
-                if db_circuit_name and db_circuit_name.lower() in wiki_location.lower():
-                    match = True
-                elif db_circuit_name and db_circuit_name.lower() in wiki_circuit_name.lower():
-                    match = True
-                
-                if match:
-                    # 3. Save circuit_official_name without trailing *
-                    official_name = wiki_circuit_name.strip().rstrip('*').strip()
-                    log(f"  Updating circuit '{db_circuit_name}' with data for '{official_name}'")
-                    
-                    # 4. Change logic for direction parsing
-                    dir_str = str(row['Direction']).lower().strip()
-                    if dir_str == 'clockwise':
-                        direction = 'clockwise'
-                    elif dir_str == 'anti-clockwise':
-                        direction = 'anti-clockwise'
-                    else:
-                        direction = 'both'
-                        
-                    # 5. Get data from "Last length used"
-                    length_str = str(row.get('Last length used', ''))
-                    length_km_match = re.search(r"(\d+\.\d+)", length_str)
-                    length_km = float(length_km_match.group(1)) if length_km_match else None
-
-                    # Type
-                    type_str = str(row['Type']).lower()
-                    circuit_type = 'street' if 'street' in type_str else 'race' if 'race' in type_str else None
-
-                    # Turns
-                    turns_match = re.search(r'\d+', str(row.get('Turns', '')))
-                    turns = int(turns_match.group(0)) if turns_match else None
-
+        for _, row in active_circuits_df.iterrows():
+            for key, name in db_circuits:
+                if name and (name.lower() in str(row['Location']).lower() or name.lower() in str(row['Circuit']).lower()):
+                    update_data = {
+                        'official_name': str(row['Circuit']).strip().rstrip('*').strip(),
+                        'location': str(row['Location']),
+                        'type': 'street' if 'street' in str(row['Type']).lower() else 'race',
+                        'direction': 'anti-clockwise' if 'anti' in str(row['Direction']).lower() else 'clockwise',
+                        'length_km': (m.group(1) if (m := re.search(r"(\d+\.\d+)", str(row.get('Last length used')))) else None),
+                        'turns': (m.group(0) if (m := re.search(r'\d+', str(row.get('Turns')))) else None)
+                    }
+                    log(f"Updating '{name}'", 'DATA', data=update_data, indent=2)
                     cursor.execute("""
-                        UPDATE circuit
-                        SET circuit_official_name = ?, location = ?, type = ?, direction = ?, length_km = ?, turns = ?
-                        WHERE circuit_key = ?
+                        UPDATE circuit SET circuit_official_name=?, location=?, type=?, direction=?, length_km=?, turns=? 
+                        WHERE circuit_key=?
                     """, (
-                        official_name, row['Location'], circuit_type, direction, length_km, turns, circuit_key
+                        update_data['official_name'], update_data['location'], update_data['type'], 
+                        update_data['direction'], update_data['length_km'], update_data['turns'], key
                     ))
-                    break 
-
+                    break # Move to the next row in DataFrame
         conn.commit()
         conn.close()
-        log("Wikipedia circuit parsing finished.")
-
     except Exception as e:
-        log(f"ERROR: Could not parse circuit data from Wikipedia. Reason: {e}")
+        log("Could not parse circuit data from Wikipedia.", 'ERROR', data={'reason': str(e)})
 
 def parse_circuit_f1():
     """Parses F1 official site for circuit data and updates the database."""
-    log("Starting F1 official site circuit parsing...")
-    
+    log("Parsing from Formula1.com", 'SUBHEADING')
     try:
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
-
-        # Get circuits with their country names and meeting dates
         circuit_data = cursor.execute("""
             SELECT DISTINCT c.circuit_key, c.circuit_name, co.country_name, m.date_start
-            FROM circuit c
-            JOIN meeting m ON c.circuit_key = m.circuit_fk
-            JOIN country co ON c.country_fk = co.country_code
-            WHERE m.date_start IS NOT NULL
-            ORDER BY m.date_start DESC
+            FROM circuit c JOIN meeting m ON c.circuit_key = m.circuit_fk JOIN country co ON c.country_fk = co.country_code
+            WHERE m.date_start IS NOT NULL ORDER BY m.date_start DESC
         """).fetchall()
 
-        for circuit_key, circuit_name, country_name, date_start in circuit_data:
-            if not all([circuit_key, country_name, date_start]):
-                continue
-                
-            # Extract year from date_start (ISO 8601 format)
-            year = date_start[:4] if len(date_start) >= 4 else None
-            if not year:
-                continue
-                
-            # Convert country name to lowercase and replace spaces with hyphens for URL
-            country_url = country_name.lower().replace(' ', '-').replace('united-states', 'united-states').replace('united-kingdom', 'great-britain')
+        for key, name, country, date in circuit_data:
+            if not all([key, country, date]): continue
+            country_url = country.lower().replace(' ', '-')
+            country_map = {'united-kingdom': 'great-britain', 'united-arab-emirates': 'abudhabi', 'usa': 'united-states'}
+            country_url = country_map.get(country_url, country_url)
+            f1_url = f"https://www.formula1.com/en/racing/{date[:4]}/{country_url}"
             
-            # Special cases for country names in F1 URLs
-            country_mappings = {
-                'united-kingdom': 'great-britain',
-                'united-arab-emirates': 'abu-dhabi'
-            }
-            
-            if country_url in country_mappings:
-                country_url = country_mappings[country_url]
-            
-            # Generate F1 official site URL
-            f1_url = f"https://www.formula1.com/en/racing/{year}/{country_url}"
-            
-            log(f"  Parsing F1 data for circuit '{circuit_name}' from {f1_url}")
+            log(f"Requesting data for '{name}' from {f1_url}", 'INFO', indent=1)
             
             try:
                 response = requests.get(f1_url, timeout=15)
+                if response.status_code == 404:
+                    log("Page not found (404), skipping.", 'WARNING', indent=2); continue
                 response.raise_for_status()
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, 'lxml')
                 
-                # Look for circuit section
                 laps = None
                 circuit_map_url = None
-                
-                # Find laps information using specific HTML structure
-                # Look for dt element with "Number of Laps" text, then find the corresponding dd element
-                dt_elements = soup.find_all('dt')
-                for dt in dt_elements:
-                    if 'number of laps' in dt.get_text().lower():
-                        # Find the next dd sibling element
-                        dd = dt.find_next_sibling('dd')
-                        if dd:
-                            laps_text = dd.get_text(strip=True)
-                            laps_match = re.search(r'(\d+)', laps_text)
-                            if laps_match:
-                                laps = int(laps_match.group(1))
-                                break
-                
-                # Find circuit map image in the same context/div as laps
-                # Look for images with circuit-related keywords and specific class structure
-                img_tags = soup.find_all('img', class_=re.compile(r'w-full.*h-full.*object-contain'))
-                for img in img_tags:
-                    src = img.get('src', '')
-                    alt = img.get('alt', '').lower()
-                    
-                    # Check if image is likely a circuit map based on src pattern and alt text
-                    if ('circuit' in src.lower() and 'maps' in src.lower()) or \
-                       ('circuit' in alt and '.png' in alt):
-                        # Ensure full URL
-                        if src.startswith('//'):
-                            circuit_map_url = 'https:' + src
-                        elif src.startswith('/'):
-                            circuit_map_url = 'https://www.formula1.com' + src
-                        elif src.startswith('http'):
-                            circuit_map_url = src
-                        
-                        if circuit_map_url:
-                            break
-                
-                # Update database if we found data
-                if laps or circuit_map_url:
-                    # Extract filename from URL for shortened display
-                    map_display = "..." + circuit_map_url.split('/')[-1] if circuit_map_url else None
-                    log(f"  Found data for '{circuit_name}': laps={laps}, map_url={map_display}")
-                    cursor.execute("""
-                        UPDATE circuit
-                        SET laps = ?, circuit_map_url = ?
-                        WHERE circuit_key = ?
-                    """, (laps, circuit_map_url, circuit_key))
-                else:
-                    log(f"  No circuit data found for '{circuit_name}' at {f1_url}")
-                    
-            except requests.exceptions.RequestException as e:
-                log(f"  ERROR: Could not fetch data from {f1_url}. Reason: {e}")
-                continue
-            except Exception as e:
-                log(f"  ERROR: Could not parse data from {f1_url}. Reason: {e}")
-                continue
 
+                # Parse Laps from the specific structure
+                laps_dt = soup.find('dt', class_=re.compile(r'typography-module_body-xs-semibold'), string=re.compile(r'Number of Laps', re.I))
+                if laps_dt:
+                    laps_dd = laps_dt.find_next_sibling('dd', class_=re.compile(r'typography-module_display-l-bold'))
+                    if laps_dd and (match := re.search(r'(\d+)', laps_dd.get_text(strip=True))):
+                        laps = int(match.group(1))
+                
+                # Parse Circuit Map URL from img with specific class
+                circuit_img = soup.find('img', class_='w-full h-full object-contain')
+                if circuit_img and (src := circuit_img.get('src')):
+                    if src.startswith('http'):
+                        circuit_map_url = src
+                    else:
+                        circuit_map_url = 'https://www.formula1.com' + src
+                
+                if laps or circuit_map_url:
+                    log("Found data", 'DATA', data={'laps': laps, 'circuit_map_url': circuit_map_url}, indent=2)
+                    cursor.execute("UPDATE circuit SET laps=COALESCE(?,laps), circuit_map_url=COALESCE(?,circuit_map_url) WHERE circuit_key=?", (laps, circuit_map_url, key))
+                else:
+                    log("No specific data (laps, map) found on page.", 'WARNING', indent=2)
+            except Exception as e:
+                log("Could not fetch or parse data.", 'ERROR', indent=2, data={'url': config.Style.url(f1_url), 'error': str(e)})
         conn.commit()
         conn.close()
-        log("F1 official site circuit parsing finished.")
-
     except Exception as e:
-        log(f"ERROR: Could not parse circuit data from F1 official site. Reason: {e}")
-
-def run_circuit_parsers():
-    """Runs all circuit parsers."""
-    log("--- Starting Circuit Data Enrichment ---")
-    parse_circuit_wiki()
-    parse_circuit_f1()
-    log("--- Circuit Data Enrichment Finished ---")
+        log("Could not parse circuit data from F1 site.", 'ERROR', data={'reason': str(e)})
