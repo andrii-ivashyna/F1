@@ -85,8 +85,8 @@ def parse_team_f1():
                 team_official_name = None
                 power_unit = None
                 chassis = None
-                team_logo_url = None
-                team_car_url = None
+                logo_image_url = None
+                car_image_url = None
                 
                 # Find Full Team Name
                 full_name_elem = soup.find(string=re.compile(r'Full Team Name', re.I))
@@ -126,7 +126,7 @@ def parse_team_f1():
                     logo_img = soup.find('img', src=re.compile(r'.*logo.*', re.I))
                 
                 if logo_img and (src := logo_img.get('src')):
-                    team_logo_url = src if src.startswith('http') else 'https://www.formula1.com' + src
+                    logo_image_url = src if src.startswith('http') else 'https://www.formula1.com' + src
                 
                 # Find team car URL - updated selector based on provided HTML
                 car_img = soup.find('img', class_=re.compile(r'.*z-40.*max-w-full.*max-h-\[90px\].*'))
@@ -138,7 +138,7 @@ def parse_team_f1():
                     car_img = soup.find('img', src=re.compile(r'.*car.*', re.I))
                 
                 if car_img and (src := car_img.get('src')):
-                    team_car_url = src if src.startswith('http') else 'https://www.formula1.com' + src
+                    car_image_url = src if src.startswith('http') else 'https://www.formula1.com' + src
                 
                 update_data = {}
                 if team_official_name:
@@ -147,10 +147,10 @@ def parse_team_f1():
                     update_data['power_unit'] = power_unit
                 if chassis:
                     update_data['chassis'] = chassis
-                if team_logo_url:
-                    update_data['team_logo_url'] = team_logo_url
-                if team_car_url:
-                    update_data['team_car_url'] = team_car_url
+                if logo_image_url:
+                    update_data['logo_image_url'] = logo_image_url
+                if car_image_url:
+                    update_data['car_image_url'] = car_image_url
                 
                 if update_data:
                     log("Found data", 'DATA', indent=2, data=update_data)
@@ -159,10 +159,10 @@ def parse_team_f1():
                         team_official_name = COALESCE(?, team_official_name), 
                         power_unit = COALESCE(?, power_unit), 
                         chassis = COALESCE(?, chassis), 
-                        team_logo_url = COALESCE(?, team_logo_url), 
-                        team_car_url = COALESCE(?, team_car_url)
+                        logo_image_url = COALESCE(?, logo_image_url), 
+                        car_image_url = COALESCE(?, car_image_url)
                         WHERE team_id = ?
-                    """, (team_official_name, power_unit, chassis, team_logo_url, team_car_url, team_id))
+                    """, (team_official_name, power_unit, chassis, logo_image_url, car_image_url, team_id))
                 else:
                     log("No new data found on page.", 'WARNING', indent=2)
             except Exception as e:

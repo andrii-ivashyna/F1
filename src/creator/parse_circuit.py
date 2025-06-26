@@ -88,7 +88,7 @@ def parse_circuit_f1():
                 soup = BeautifulSoup(response.text, 'lxml')
                 
                 laps = None
-                circuit_map_url = None
+                map_image_url = None
 
                 # Parse Laps from the specific structure
                 laps_dt = soup.find('dt', class_=re.compile(r'typography-module_body-xs-semibold'), string=re.compile(r'Number of Laps', re.I))
@@ -101,13 +101,13 @@ def parse_circuit_f1():
                 circuit_img = soup.find('img', class_='w-full h-full object-contain')
                 if circuit_img and (src := circuit_img.get('src')):
                     if src.startswith('http'):
-                        circuit_map_url = src
+                        map_image_url = src
                     else:
-                        circuit_map_url = 'https://www.formula1.com' + src
+                        map_image_url = 'https://www.formula1.com' + src
                 
-                if laps or circuit_map_url:
-                    log("Found data", 'DATA', data={'laps': laps, 'circuit_map_url': circuit_map_url}, indent=2)
-                    cursor.execute("UPDATE circuit SET laps=COALESCE(?,laps), circuit_map_url=COALESCE(?,circuit_map_url) WHERE circuit_key=?", (laps, circuit_map_url, key))
+                if laps or map_image_url:
+                    log("Found data", 'DATA', data={'laps': laps, 'map_image_url': map_image_url}, indent=2)
+                    cursor.execute("UPDATE circuit SET laps=COALESCE(?,laps), map_image_url=COALESCE(?,map_image_url) WHERE circuit_key=?", (laps, map_image_url, key))
                 else:
                     log("No specific data (laps, map) found on page.", 'WARNING', indent=2)
             except Exception as e:

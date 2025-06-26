@@ -5,6 +5,7 @@ import config
 import fetch_api
 import parse_circuit
 import parse_team
+import parse_driver
 from config import log, end_log
 
 # --- IMPORTANT ---
@@ -30,10 +31,13 @@ def main():
             elif command == 'f1':
                 parse_circuit.parse_circuit_f1()
                 parse_team.parse_team_f1()
+                parse_driver.parse_driver_f1()
             elif command == 'circuit':
                 parse_circuit.run_circuit_parsers()
             elif command == 'team':
                 parse_team.run_team_parsers()
+            elif command == 'driver':
+                parse_driver.run_driver_parsers()
             elif command == 'circuit-wiki':
                 parse_circuit.parse_circuit_wiki()
             elif command == 'circuit-f1':
@@ -42,6 +46,8 @@ def main():
                 parse_team.parse_team_wiki()
             elif command == 'team-f1':
                 parse_team.parse_team_f1()
+            elif command == 'driver-f1':
+                parse_driver.parse_driver_f1()
             else:
                 log(f"Unknown command: {command}", 'ERROR')
                 log("See --help for available commands.", 'INFO')
@@ -54,6 +60,7 @@ def main():
             fetch_api.populate_database()
             parse_circuit.run_circuit_parsers()
             parse_team.run_team_parsers()
+            parse_driver.run_driver_parsers()
         
         log("Process finished successfully.", 'SUCCESS')
         end_log() # Add a final newline for clean exit

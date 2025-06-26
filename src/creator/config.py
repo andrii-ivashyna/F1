@@ -107,7 +107,7 @@ def create_database():
     conn.close()
     log("Database and tables created successfully.", 'SUCCESS')
 
-# --- Database Structure (Schema remains the same) ---
+# --- Database Structure (Schema) ---
 TABLES_TO_DROP = [
     "session_driver", "meeting_driver", "driver", "team",
     "session", "meeting", "circuit", "country",
@@ -119,7 +119,7 @@ CREATE_TABLE_STATEMENTS = [
         location VARCHAR(50), type TEXT CHECK(type IN ('street', 'race')),
         direction TEXT CHECK(direction IN ('clockwise', 'anti-clockwise', 'both')),
         length_km FLOAT, laps SMALLINT, turns SMALLINT, gmt_offset VARCHAR(6),
-        country_fk CHAR(3), circuit_map_url VARCHAR(255),
+        country_fk CHAR(3), map_image_url VARCHAR(255),
         FOREIGN KEY (country_fk) REFERENCES country(country_code));""",
     """CREATE TABLE meeting (
         meeting_key SMALLINT PRIMARY KEY, meeting_name VARCHAR(50), meeting_official_name VARCHAR(100),
@@ -132,10 +132,11 @@ CREATE_TABLE_STATEMENTS = [
     """CREATE TABLE team (
         team_id INTEGER PRIMARY KEY AUTOINCREMENT, team_name VARCHAR(30) UNIQUE, team_official_name VARCHAR(100),
         power_unit VARCHAR(30), chassis VARCHAR(30), country_fk CHAR(3),
-        team_logo_url VARCHAR(255), team_car_url VARCHAR(255),
+        logo_image_url VARCHAR(255), car_image_url VARCHAR(255),
         FOREIGN KEY (country_fk) REFERENCES country(country_code));""",
     """CREATE TABLE driver (
         driver_code CHAR(3) PRIMARY KEY, driver_name VARCHAR(60), driver_number SMALLINT, country_fk CHAR(3),
+        driver_image_url VARCHAR(255), number_image_url VARCHAR(255),
         FOREIGN KEY (country_fk) REFERENCES country(country_code));""",
     """CREATE TABLE meeting_driver (
         meeting_fk SMALLINT, driver_fk CHAR(3), team_fk INTEGER, driver_number SMALLINT,
