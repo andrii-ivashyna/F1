@@ -63,13 +63,13 @@ def main():
             parse_driver.run_driver_parsers()
         
         log("Process finished successfully.", 'SUCCESS')
-        end_log() # Add a final newline for clean exit
+        end_log()
         
     except Exception as e:
         log(f"An unexpected error occurred during the process", 'ERROR', data={'error': str(e)})
         import traceback
         traceback.print_exc()
-        end_log() # Also add newline on error
+        end_log()
         sys.exit(1)
 
 if __name__ == '__main__':
