@@ -8,7 +8,7 @@ from datetime import datetime
 # --- Application Configuration ---
 DB_FILE = 'data/formula.db'
 API_BASE_URL = 'https://api.openf1.org/v1'
-YEARS = [2025]
+YEAR = 2025 # Fetch data from this year
 
 # --- Terminal Logging Styling ---
 class Style:
@@ -44,6 +44,9 @@ def log(message, level='INFO', data=None, indent=0):
     color = LOG_STYLES.get(level.upper(), Style.WHITE)
     indent_space = "  " * indent
     
+    # Clear the line for clean progress bar updates
+    sys.stdout.write('\r\033[K')
+
     if level.upper() in ['HEADING', 'SUBHEADING']:
         print(f"\n{indent_space}{color}--- {message} ---{Style.RESET}")
         return
@@ -52,12 +55,33 @@ def log(message, level='INFO', data=None, indent=0):
     if data:
         log_message += f" {format_log_data(data)}"
         
-    sys.stdout.write(f'\r{log_message}\n')
+    sys.stdout.write(f'{log_message}\n')
     sys.stdout.flush()
 
 def end_log():
     """Prints a final newline for clean exit."""
     print()
+
+def show_progress_bar(iteration, total, prefix='', suffix='', length=50, fill='█'):
+    """
+    Displays a progress bar.
+    Call in a loop to create terminal progress bar.
+    """
+    # Clear the line to prevent log messages from breaking the bar
+    sys.stdout.write('\r\033[K')
+    
+    percent = ("{0:.1f}").format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    
+    # Use f-strings and ensure all parts are strings
+    progress_str = f'\r{Style.CYAN}{prefix} |{bar}| {percent}% {suffix}{Style.RESET}'
+    
+    sys.stdout.write(progress_str)
+    sys.stdout.flush()
+    if iteration == total:
+        sys.stdout.write('\n') # New line on complete
+        sys.stdout.flush()
 
 # --- Database Setup Function ---
 def create_database():
@@ -71,7 +95,6 @@ def create_database():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # Get user tables only (exclude system tables)
         tables = [row[0] for row in cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         ).fetchall()]
