@@ -166,4 +166,18 @@ CREATE TABLE session_driver (
     FOREIGN KEY (session_fk) REFERENCES session(session_key), 
     FOREIGN KEY (driver_fk) REFERENCES driver(driver_code)
 );
+
+CREATE TABLE weather (
+    weather_id INTEGER PRIMARY KEY,
+    air_temperature REAL,
+    track_temperature REAL,
+    humidity SMALLINT,
+    air_pressure SMALLINT,
+    wind_direction SMALLINT,
+    wind_speed REAL,
+    is_raining BOOLEAN,
+    date TEXT,
+    session_fk SMALLINT,
+    FOREIGN KEY (session_fk) REFERENCES session(session_key)
+);
 """

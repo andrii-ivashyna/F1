@@ -9,8 +9,13 @@ import sys
 from config import log
 
 # --- Formatting Helpers ---
-def format_api_date(date_str):
+def format_int_date(date_str):
     if isinstance(date_str, str) and len(date_str) > 19: return date_str[:19]
+    return date_str
+
+def format_real_date(date_str):
+    """Formats weather date string toYYYY-MM-DDTHH:MM:SS.sss"""
+    if isinstance(date_str, str) and len(date_str) > 23: return date_str[:23]
     return date_str
 
 def format_gmt_offset(gmt_str):
@@ -75,7 +80,7 @@ def populate_database():
                 
                 sessions = get_api_data('sessions', {'meeting_key': meeting.get('meeting_key')})
                 if sessions: all_sessions.extend(sessions)
-                time.sleep(0.1)
+                time.sleep(0.2)
         print() # Newline after progress bar
         time.sleep(0.5)
 
@@ -87,7 +92,7 @@ def populate_database():
              format_gmt_offset(meeting.get('gmt_offset')), unique_countries.get(meeting.get('country_name'))))
         cursor.execute("INSERT OR IGNORE INTO meeting (meeting_key, meeting_name, meeting_official_name, date_start, circuit_fk) VALUES (?, ?, ?, ?, ?)",
             (meeting.get('meeting_key'), meeting.get('meeting_name'), meeting.get('meeting_official_name'),
-             format_api_date(meeting.get('date_start')), meeting.get('circuit_key')))
+             format_int_date(meeting.get('date_start')), meeting.get('circuit_key')))
     conn.commit()
 
     total_sessions = len(all_sessions)
@@ -96,10 +101,10 @@ def populate_database():
         sys.stdout.write(f"\r{config.Style.CYAN}  ▸ Collecting driver/team data from session: {session.get('session_name', 'N/A'):<20} {progress}{config.Style.RESET}")
         sys.stdout.flush()
         
-        session_date = format_api_date(session.get('date_start'))
+        session_date = format_int_date(session.get('date_start'))
         cursor.execute("INSERT OR IGNORE INTO session (session_key, session_name, session_type, date_start, date_end, meeting_fk) VALUES (?, ?, ?, ?, ?, ?)",
             (session.get('session_key'), session.get('session_name'), session.get('session_type'),
-             session_date, format_api_date(session.get('date_end')), session.get('meeting_key')))
+             session_date, format_int_date(session.get('date_end')), session.get('meeting_key')))
 
         drivers_in_session = get_api_data('drivers', {'session_key': session.get('session_key')})
         if drivers_in_session:
@@ -109,7 +114,7 @@ def populate_database():
                     latest_driver_data[code] = {'data': driver, 'session_date': session_date}
                 if (team_name := driver.get('team_name')): unique_teams_by_name[team_name] = driver
                 if (country_code := driver.get('country_code')): unique_countries[driver['country_name']] = country_code
-        time.sleep(0.1)
+        time.sleep(0.2)
     print() # Newline after progress bar
 
     log("Finalizing database entries", 'INFO')
@@ -131,7 +136,12 @@ def populate_database():
     conn.commit()
     
     processed_meeting_drivers = set()
-    for session in all_sessions:
+    log("Populating meeting/session drivers", 'SUBHEADING')
+    for i, session in enumerate(all_sessions):
+        progress = f"[{i+1}/{total_sessions}]"
+        sys.stdout.write(f"\r{config.Style.CYAN}  ▸ Processing session drivers: {session.get('session_name', 'N/A'):<20} {progress}{config.Style.RESET}")
+        sys.stdout.flush()
+
         if drivers := get_api_data('drivers', {'session_key': session.get('session_key')}):
             for driver in drivers:
                 code = driver.get('name_acronym')
@@ -143,8 +153,26 @@ def populate_database():
                         (meeting_key, code, team_id, driver.get('driver_number')))
                     processed_meeting_drivers.add((meeting_key, code))
                 cursor.execute("INSERT OR IGNORE INTO session_driver (session_fk, driver_fk) VALUES (?, ?)", (session.get('session_key'), code))
-        time.sleep(0.1)
+        time.sleep(0.2)
+    
+    print() # Newline after progress bar
+    conn.commit()
 
+    log("Populating weather data from meetings", 'SUBHEADING')
+    for i, meeting in enumerate(all_meetings):
+        progress = f"[{i+1}/{total_meetings}]"
+        sys.stdout.write(f"\r{config.Style.CYAN}  ▸ Processing meeting weather: {meeting.get('meeting_name', 'N/A'):<25} {progress}{config.Style.RESET}")
+        sys.stdout.flush()
+        
+        if weather_data := get_api_data('weather', {'meeting_key': meeting.get('meeting_key')}):
+            for weather in weather_data:
+                cursor.execute("INSERT INTO weather (air_temperature, track_temperature, humidity, air_pressure, wind_direction, wind_speed, is_raining, date, session_fk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (weather.get('air_temperature'), weather.get('track_temperature'), weather.get('humidity'), weather.get('pressure'),
+                     weather.get('wind_direction'), weather.get('wind_speed'), weather.get('rainfall'), 
+                     format_real_date(weather.get('date')), weather.get('session_key')))
+        time.sleep(0.2)
+    
+    print() # Newline after progress bar
     conn.commit()
     conn.close()
     log("API data population complete.", 'SUCCESS')
