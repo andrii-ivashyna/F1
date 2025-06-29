@@ -7,20 +7,19 @@ import re
 from bs4 import BeautifulSoup
 from io import StringIO
 import config
-from config import log
+from config import log, show_progress_bar
+import time
 
 def run_circuit_parsers():
     """Runs all circuit parsers."""
-    log("Enriching Circuit Data", 'HEADING')
+    log("Processing Circuit Data...", 'SUBHEADING')
     parse_circuit_wiki()
     parse_circuit_f1()
 
 def parse_circuit_wiki():
     """Parses Wikipedia for F1 circuit data and updates the database."""
-    log("Parsing from Wikipedia", 'SUBHEADING')
-    url = "https://en.wikipedia.org/wiki/List_of_Formula_One_circuits"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get("https://en.wikipedia.org/wiki/List_of_Formula_One_circuits", timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
         
@@ -28,13 +27,15 @@ def parse_circuit_wiki():
         circuits_df = pd.read_html(StringIO(str(table)))[0]
 
         active_circuits_df = circuits_df[circuits_df['Circuit'].str.strip().str.endswith('*')].copy()
-        log(f"Found {len(active_circuits_df)} active circuits on Wikipedia.", 'SUCCESS', indent=1)
 
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
         db_circuits = cursor.execute("SELECT circuit_key, circuit_name FROM circuit").fetchall()
 
-        for _, row in active_circuits_df.iterrows():
+        total_circuits = len(active_circuits_df)
+        start_time_wiki_circuits = time.time()
+        for i, (_, row) in enumerate(active_circuits_df.iterrows()):
+            show_progress_bar(i + 1, total_circuits, prefix_text='Wikipedia:    Circuit', start_time=start_time_wiki_circuits)
             for key, name in db_circuits:
                 if name and (name.lower() in str(row['Location']).lower() or name.lower() in str(row['Circuit']).lower()):
                     update_data = {
@@ -45,7 +46,6 @@ def parse_circuit_wiki():
                         'length_km': (m.group(1) if (m := re.search(r"(\d+\.\d+)", str(row.get('Last length used')))) else None),
                         'turns': (m.group(0) if (m := re.search(r'\d+', str(row.get('Turns')))) else None)
                     }
-                    log(f"Updating '{name}'", 'DATA', data=update_data, indent=2)
                     cursor.execute("""
                         UPDATE circuit SET circuit_official_name=?, location=?, type=?, direction=?, length_km=?, turns=? 
                         WHERE circuit_key=?
@@ -53,7 +53,7 @@ def parse_circuit_wiki():
                         update_data['official_name'], update_data['location'], update_data['type'], 
                         update_data['direction'], update_data['length_km'], update_data['turns'], key
                     ))
-                    break # Move to the next row in DataFrame
+                    break
         conn.commit()
         conn.close()
     except Exception as e:
@@ -61,7 +61,6 @@ def parse_circuit_wiki():
 
 def parse_circuit_f1():
     """Parses F1 official site for circuit data and updates the database."""
-    log("Parsing from Formula1.com", 'SUBHEADING')
     try:
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
@@ -71,14 +70,15 @@ def parse_circuit_f1():
             WHERE m.date_start IS NOT NULL ORDER BY m.date_start DESC
         """).fetchall()
 
-        for key, name, country, date in circuit_data:
+        total_circuits = len(circuit_data)
+        start_time_f1_circuits = time.time()
+        for i, (key, name, country, date) in enumerate(circuit_data):
+            show_progress_bar(i + 1, total_circuits, prefix_text='Formula1.com: Circuit', start_time=start_time_f1_circuits)
             if not all([key, country, date]): continue
             country_url = country.lower().replace(' ', '-')
             country_map = {'united-kingdom': 'great-britain', 'united-arab-emirates': 'abudhabi', 'usa': 'united-states'}
             country_url = country_map.get(country_url, country_url)
             f1_url = f"https://www.formula1.com/en/racing/{date[:4]}/{country_url}"
-            
-            log(f"Requesting data for '{name}' from {f1_url}", 'INFO', indent=1)
             
             try:
                 response = requests.get(f1_url, timeout=15)
@@ -90,23 +90,17 @@ def parse_circuit_f1():
                 laps = None
                 map_image_url = None
 
-                # Parse Laps from the specific structure
                 laps_dt = soup.find('dt', class_=re.compile(r'typography-module_body-xs-semibold'), string=re.compile(r'Number of Laps', re.I))
                 if laps_dt:
                     laps_dd = laps_dt.find_next_sibling('dd', class_=re.compile(r'typography-module_display-l-bold'))
                     if laps_dd and (match := re.search(r'(\d+)', laps_dd.get_text(strip=True))):
                         laps = int(match.group(1))
                 
-                # Parse Circuit Map URL from img with specific class
                 circuit_img = soup.find('img', class_='w-full h-full object-contain')
                 if circuit_img and (src := circuit_img.get('src')):
-                    if src.startswith('http'):
-                        map_image_url = src
-                    else:
-                        map_image_url = 'https://www.formula1.com' + src
+                    map_image_url = src if src.startswith('http') else 'https://www.formula1.com' + src
                 
                 if laps or map_image_url:
-                    log("Found data", 'DATA', data={'laps': laps, 'map_image_url': map_image_url}, indent=2)
                     cursor.execute("UPDATE circuit SET laps=COALESCE(?,laps), map_image_url=COALESCE(?,map_image_url) WHERE circuit_key=?", (laps, map_image_url, key))
                 else:
                     log("No specific data (laps, map) found on page.", 'WARNING', indent=2)

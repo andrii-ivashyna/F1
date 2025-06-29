@@ -6,7 +6,7 @@ import fetch_api
 import parse_circuit
 import parse_team
 import parse_driver
-from config import log, end_log
+from config import log
 
 # --- IMPORTANT ---
 # Before running, please install the required libraries:
@@ -24,6 +24,7 @@ def main():
             
             if command == 'api':
                 config.create_database()
+                log("Populating database from OpenF1 API", 'HEADING')
                 fetch_api.populate_database()
             elif command == 'wiki':
                 parse_circuit.parse_circuit_wiki()
@@ -57,19 +58,21 @@ def main():
             log("Starting the Full Formula 1 Data Setup Process", 'HEADING')
             
             config.create_database()
+            log("Populating database from OpenF1 API", 'HEADING')
             fetch_api.populate_database()
+            
+            log("Enriching Data from External Sources", 'HEADING')
+            
             parse_circuit.run_circuit_parsers()
             parse_team.run_team_parsers()
             parse_driver.run_driver_parsers()
         
-        log("Process finished successfully.", 'SUCCESS')
-        end_log()
+        log("Process completed successfully!", 'SUCCESS')
         
     except Exception as e:
         log(f"An unexpected error occurred during the process", 'ERROR', data={'error': str(e)})
         import traceback
         traceback.print_exc()
-        end_log()
         sys.exit(1)
 
 if __name__ == '__main__':

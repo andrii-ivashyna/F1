@@ -1,9 +1,9 @@
 # config.py
-
 import os
 import sqlite3
 import sys
 from datetime import datetime
+import time
 
 # --- Application Configuration ---
 DB_FILE = 'data/formula.db'
@@ -14,8 +14,8 @@ YEAR = 2025 # Fetch data from this year
 class Style:
     """ANSI escape codes for terminal colors."""
     RESET, BOLD, UNDERLINE = '\033[0m', '\033[1m', '\033[4m'
-    BLACK, RED, GREEN, YELLOW = '\033[30m', '\033[31m', '\033[32m', '\033[33m'
-    BLUE, MAGENTA, CYAN, WHITE = '\033[34m', '\033[35m', '\033[36m', '\033[37m'
+    BLACK, RED, GREEN, YELLOW = '\033[90m', '\033[91m', '\033[92m', '\033[93m'
+    BLUE, MAGENTA, CYAN, WHITE = '\033[94m', '\033[95m', '\033[96m', '\033[97m'
     
     @staticmethod
     def url(url_string):
@@ -24,63 +24,61 @@ class Style:
 
 LOG_STYLES = {
     'INFO': Style.CYAN, 'SUCCESS': Style.GREEN, 'WARNING': Style.YELLOW, 'ERROR': Style.RED,
-    'DATA': Style.MAGENTA, 'HEADING': f'{Style.BOLD}{Style.UNDERLINE}{Style.WHITE}',
-    'SUBHEADING': f'{Style.BOLD}{Style.BLUE}'
+    'HEADING': f'{Style.BOLD}{Style.WHITE}', 'SUBHEADING': f'{Style.BOLD}{Style.MAGENTA}'
 }
 
 def format_log_data(data_dict):
-    """Formats a dictionary of data for beautiful logging."""
-    parts = []
-    for key, value in data_dict.items():
-        if value is None:
-            continue
-        formatted_value = f"'{Style.url(value)}'" if isinstance(value, str) and value.startswith('http') else f"'{value}'"
-        parts.append(f"{Style.BOLD}{key}={Style.RESET}{Style.WHITE}{formatted_value}{Style.RESET}")
-    return f"{Style.WHITE}[ {f'{Style.RESET}, '.join(parts)}{Style.WHITE} ]{Style.RESET}"
+    """Formats a dictionary of data for log output."""
+    if not data_dict: return ""
+    return " " + Style.MAGENTA + str(data_dict) + Style.RESET
 
-def log(message, level='INFO', data=None, indent=0):
-    """Prints a styled and structured message with a timestamp."""
-    timestamp = datetime.now().strftime('%H:%M:%S')
-    color = LOG_STYLES.get(level.upper(), Style.WHITE)
-    indent_space = "  " * indent
+def log(message, msg_type='INFO', indent=0, data=None):
+    """Prints a styled log message to the console."""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    style = LOG_STYLES.get(msg_type, Style.RESET)
     
-    # Clear the line for clean progress bar updates
-    sys.stdout.write('\r\033[K')
+    prefix = ""
+    if indent > 0: # For any indent, use a simple pointer or space, not the double pointer
+        prefix = "  " * indent + "▸ "
 
-    if level.upper() in ['HEADING', 'SUBHEADING']:
-        print(f"\n{indent_space}{color}--- {message} ---{Style.RESET}")
-        return
-
-    log_message = f"{Style.YELLOW}{timestamp}{Style.RESET} {color}{'▸' * (indent + 1):<3} {message}{Style.RESET}"
-    if data:
-        log_message += f" {format_log_data(data)}"
-        
-    sys.stdout.write(f'{log_message}\n')
+    if msg_type == 'HEADING':
+        print()
+        full_message = f"{style}--- {message} ---{Style.RESET}"
+    elif msg_type == 'SUBHEADING':
+        full_message = f"{style}--- {message} ---{Style.RESET}"
+    else:
+        full_message = f"{style}{timestamp} {prefix}{message}{format_log_data(data)}{Style.RESET}"
+    
+    print(full_message)
     sys.stdout.flush()
 
-def end_log():
-    """Prints a final newline for clean exit."""
-    print()
-
-def show_progress_bar(iteration, total, prefix='', suffix='', length=50, fill='█'):
+def show_progress_bar(current, total, prefix_text='', length=40, fill='█', start_time=None):
     """
-    Displays a progress bar.
-    Call in a loop to create terminal progress bar.
+    Displays a dynamic progress bar in the console.
+    :param current: Current iteration.
+    :param total: Total iterations.
+    :param prefix_text: The descriptive text for the progress bar (e.g., "API Countries").
+    :param length: Character length of the bar.
+    :param fill: Bar fill character.
+    :param start_time: Optional, time.time() when the operation started, to display elapsed time.
     """
-    # Clear the line to prevent log messages from breaking the bar
-    sys.stdout.write('\r\033[K')
-    
-    percent = ("{0:.1f}").format(100 * (iteration / float(total)))
-    filled_length = int(length * iteration // total)
+    percent = ("{0:.1f}").format(100 * (current / float(total)))
+    filled_length = int(length * current // total)
     bar = fill * filled_length + '-' * (length - filled_length)
     
-    # Use f-strings and ensure all parts are strings
-    progress_str = f'\r{Style.CYAN}{prefix} |{bar}| {percent}% {suffix}{Style.RESET}'
-    
-    sys.stdout.write(progress_str)
+    time_str = ""
+    if start_time is not None:
+        elapsed = time.time() - start_time
+        time_str = f" {Style.YELLOW}({elapsed:.1f}s){Style.RESET}"
+
+    # Pad prefix_text to a consistent length, then add "   " before the bar
+    # Max length for "Formula1.com Circuits" is 22 chars. Let's pad to 22 chars for consistent alignment, then add 3 spaces.
+    padded_label = f"{prefix_text:<22}   "
+
+    sys.stdout.write(f"\r{Style.CYAN}{padded_label}|{bar}| {percent}%{Style.RESET}{time_str}")
     sys.stdout.flush()
-    if iteration == total:
-        sys.stdout.write('\n') # New line on complete
+    if current == total:
+        sys.stdout.write(f"\r{Style.CYAN}{padded_label}|{bar}| {percent}%{Style.RESET}{time_str}\n")
         sys.stdout.flush()
 
 # --- Database Setup Function ---
