@@ -33,33 +33,35 @@ def get_country_code(country_name):
 def get_api_data_bulk(endpoint, params=None, max_retries=5):
     """Fetches data from an API endpoint with a clean progress message."""
     retries = 0
+    start_time = time.time()
     
-    sys.stdout.write(f"{config.Style.CYAN}  ▸ Fetching {endpoint:<10}... {config.Style.RESET}")
-    sys.stdout.flush()
-
     while retries <= max_retries:
         try:
+            # Show progress during the request
+            show_progress_bar(retries, max_retries + 1, prefix_text=f'API: {endpoint.capitalize()}', start_time=start_time)
+            
             response = requests.get(f"{config.API_BASE_URL}/{endpoint}", params=params, timeout=30)
             response.raise_for_status()
             
-            sys.stdout.write(f"\r{config.Style.GREEN}  ▸ Fetched {endpoint:<10} successfully. ({len(response.json())} records){config.Style.RESET}\n")
-            sys.stdout.flush()
+            # Show completion
+            show_progress_bar(max_retries + 1, max_retries + 1, prefix_text=f'API: {endpoint.capitalize()}', start_time=start_time)
             return response.json()
             
         except requests.exceptions.RequestException as e:
             if retries < max_retries:
-                time.sleep(2**(retries)); retries += 1
+                retries += 1
+                time.sleep(2**(retries))
             else:
-                sys.stdout.write(f"\r{config.Style.RED}  ▸ Fetching {endpoint:<10} FAILED ({type(e).__name__}){config.Style.RESET}\n")
-                log("An unexpected request error occurred.", 'ERROR', indent=2, data={'endpoint': endpoint, 'error': str(e)})
+                # Show failure
+                show_progress_bar(0, max_retries + 1, prefix_text=f'API: {endpoint.capitalize()} FAILED', start_time=start_time)
                 return None
     return None
 
 # --- Data Population ---
 def populate_database():
     """Fetches API data in bulk and populates the database efficiently."""
+    log("Fetching data from OpenF1 API", 'SUBHEADING')
     
-    log("Starting bulk data fetch from API", 'SUBHEADING')
     meetings = get_api_data_bulk('meetings', {'year': config.YEAR})
     if not meetings:
         log("Halting process: could not fetch meetings data.", 'ERROR')
@@ -75,18 +77,17 @@ def populate_database():
         log("Halting process: one or more subsequent API calls failed.", 'ERROR')
         return
 
-    log("Processing and inserting API data into the database", 'HEADING')
+    log("Processing and inserting data in database", 'SUBHEADING')
     conn = sqlite3.connect(config.DB_FILE)
     cursor = conn.cursor()
 
     # --- Process Meetings, Circuits & Countries ---
-    log("Processing API data for Meeting & Circuit & Country", 'SUBHEADING')
     unique_countries = {m['country_name']: get_country_code(m['country_name']) for m in meetings if m.get('country_name')}
     
     # Insert meetings
     start_time_meetings = time.time()
     for i, meeting in enumerate(meetings):
-        show_progress_bar(i + 1, len(meetings), prefix_text='API: Meeting', start_time=start_time_meetings)
+        show_progress_bar(i + 1, len(meetings), prefix_text='DB: Meeting', start_time=start_time_meetings)
         cursor.execute("INSERT OR IGNORE INTO meeting (meeting_key, meeting_name, meeting_official_name, date_start, circuit_fk) VALUES (?, ?, ?, ?, ?)",
             (meeting.get('meeting_key'), meeting.get('meeting_official_name'), meeting.get('meeting_official_name'),
              format_int_date(meeting.get('date_start')), meeting.get('circuit_key')))
@@ -95,7 +96,7 @@ def populate_database():
     # Insert circuits
     start_time_circuits = time.time()
     for i, meeting in enumerate(meetings):
-        show_progress_bar(i + 1, len(meetings), prefix_text='API: Circuit', start_time=start_time_circuits)
+        show_progress_bar(i + 1, len(meetings), prefix_text='DB: Circuit', start_time=start_time_circuits)
         cursor.execute("INSERT OR IGNORE INTO circuit (circuit_key, circuit_name, location, gmt_offset, country_fk) VALUES (?, ?, ?, ?, ?)",
             (meeting.get('circuit_key'), meeting.get('circuit_short_name'), meeting.get('location'), 
              format_gmt_offset(meeting.get('gmt_offset')), unique_countries.get(meeting.get('country_name'))))
@@ -105,22 +106,20 @@ def populate_database():
     country_data = [(code, name) for name, code in unique_countries.items() if name and code]
     start_time_countries = time.time()
     for i, (code, name) in enumerate(country_data):
-        show_progress_bar(i + 1, len(country_data), prefix_text='API: Country', start_time=start_time_countries)
+        show_progress_bar(i + 1, len(country_data), prefix_text='DB: Country', start_time=start_time_countries)
         cursor.execute("INSERT OR IGNORE INTO country (country_code, country_name) VALUES (?, ?)", (code, name))
     conn.commit()
 
     # --- Process Sessions ---
-    log("Processing API data for Session", 'SUBHEADING')
     start_time_sessions = time.time()
     for i, session in enumerate(sessions):
-        show_progress_bar(i + 1, len(sessions), prefix_text='API: Session', start_time=start_time_sessions)
+        show_progress_bar(i + 1, len(sessions), prefix_text='DB: Session', start_time=start_time_sessions)
         cursor.execute("INSERT OR IGNORE INTO session (session_key, session_name, session_type, date_start, date_end, meeting_fk) VALUES (?, ?, ?, ?, ?, ?)",
             (session.get('session_key'), session.get('session_name'), session.get('session_type'),
              format_int_date(session.get('date_start')), format_int_date(session.get('date_end')), session.get('meeting_key')))
     conn.commit()
 
-    # --- Process Drivers & Teams ---    
-    log("Processing API data for Driver & Team...", 'SUBHEADING')
+    # --- Process Drivers & Teams ---
     session_to_meeting_map = {s['session_key']: s['meeting_key'] for s in sessions}
     latest_driver_records = {}
     driver_meeting_keys = {}
@@ -145,7 +144,7 @@ def populate_database():
     # Insert drivers
     start_time_drivers = time.time()
     for i, driver in enumerate(final_drivers):
-        show_progress_bar(i + 1, len(final_drivers), prefix_text='API: Driver', start_time=start_time_drivers)
+        show_progress_bar(i + 1, len(final_drivers), prefix_text='DB: Driver', start_time=start_time_drivers)
         code = driver.get('name_acronym')
         cursor.execute("INSERT OR REPLACE INTO driver (driver_code, driver_name, driver_number, country_fk) VALUES (?, ?, ?, ?)",
                        (code, driver.get('full_name'), driver.get('driver_number'), driver.get('country_code')))
@@ -155,7 +154,7 @@ def populate_database():
     start_time_teams = time.time()
     team_data = [(name,) for name in unique_teams]
     for i, name_tuple in enumerate(team_data):
-        show_progress_bar(i + 1, len(team_data), prefix_text='API: Team', start_time=start_time_teams)
+        show_progress_bar(i + 1, len(team_data), prefix_text='DB: Team', start_time=start_time_teams)
         cursor.execute("INSERT OR IGNORE INTO team (team_name) VALUES (?)", name_tuple)
     conn.commit()
 
@@ -163,10 +162,7 @@ def populate_database():
         row[1]: row[0] for row in cursor.execute(f"SELECT team_id, team_name FROM team WHERE team_name IN ({','.join('?'*len(unique_teams))})", list(unique_teams))
     }
 
-
     # --- Process Join Tables ---
-    log("Processing API data for Join Tables...", 'SUBHEADING')
-    
     # Insert meeting_driver links
     meeting_driver_data = []
     for i, driver in enumerate(final_drivers):
@@ -178,7 +174,7 @@ def populate_database():
     
     start_time_meeting_driver = time.time()
     for i, entry in enumerate(meeting_driver_data):
-        show_progress_bar(i + 1, len(meeting_driver_data), prefix_text='API: Meeting-Driver', start_time=start_time_meeting_driver)
+        show_progress_bar(i + 1, len(meeting_driver_data), prefix_text='DB: Meeting-Driver', start_time=start_time_meeting_driver)
         cursor.execute("INSERT OR IGNORE INTO meeting_driver (meeting_fk, driver_fk, team_fk, driver_number) VALUES (?, ?, ?, ?)", entry)
     conn.commit()
 
@@ -190,12 +186,11 @@ def populate_database():
     session_driver_data = list(session_driver_pairs)
     start_time_session_driver = time.time()
     for i, pair in enumerate(session_driver_data):
-        show_progress_bar(i + 1, len(session_driver_data), prefix_text='API: Session-Driver', start_time=start_time_session_driver)
+        show_progress_bar(i + 1, len(session_driver_data), prefix_text='DB: Session-Driver', start_time=start_time_session_driver)
         cursor.execute("INSERT OR IGNORE INTO session_driver (session_fk, driver_fk) VALUES (?, ?)", pair)
     conn.commit()
 
     # --- Process Weather Data ---
-    log("Processing API data for Weather...", 'SUBHEADING')
     weather_inserts = [
         (w.get('air_temperature'), w.get('track_temperature'), w.get('humidity'), w.get('pressure'),
          w.get('wind_direction'), w.get('wind_speed'), w.get('rainfall'), 
@@ -205,7 +200,7 @@ def populate_database():
     
     start_time_weather = time.time()
     for i, entry in enumerate(weather_inserts):
-        show_progress_bar(i + 1, len(weather_inserts), prefix_text='API: Weather', start_time=start_time_weather)
+        show_progress_bar(i + 1, len(weather_inserts), prefix_text='DB: Weather', start_time=start_time_weather)
         cursor.execute("INSERT INTO weather (air_temperature, track_temperature, humidity, air_pressure, wind_direction, wind_speed, is_raining, date, session_fk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", entry)
     conn.commit()
 

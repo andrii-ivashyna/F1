@@ -11,7 +11,6 @@ import time
 
 def run_driver_parsers():
     """Runs all driver parsers."""
-    log("Processing Driver Data...", 'SUBHEADING')
     parse_driver_f1()
 
 def parse_driver_f1():

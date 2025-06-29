@@ -13,7 +13,6 @@ import time
 
 def run_team_parsers():
     """Runs all team parsers."""
-    log("Processing Team Data...", 'SUBHEADING')
     parse_team_wiki()
     parse_team_f1()
 

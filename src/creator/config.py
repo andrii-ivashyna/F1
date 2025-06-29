@@ -27,27 +27,17 @@ LOG_STYLES = {
     'HEADING': f'{Style.BOLD}{Style.WHITE}', 'SUBHEADING': f'{Style.BOLD}{Style.MAGENTA}'
 }
 
-def format_log_data(data_dict):
-    """Formats a dictionary of data for log output."""
-    if not data_dict: return ""
-    return " " + Style.MAGENTA + str(data_dict) + Style.RESET
-
 def log(message, msg_type='INFO', indent=0, data=None):
     """Prints a styled log message to the console."""
-    timestamp = datetime.now().strftime("%H:%M:%S")
     style = LOG_STYLES.get(msg_type, Style.RESET)
     
-    prefix = ""
-    if indent > 0: # For any indent, use a simple pointer or space, not the double pointer
-        prefix = "  " * indent + "▸ "
-
     if msg_type == 'HEADING':
         print()
         full_message = f"{style}--- {message} ---{Style.RESET}"
     elif msg_type == 'SUBHEADING':
         full_message = f"{style}--- {message} ---{Style.RESET}"
     else:
-        full_message = f"{style}{timestamp} {prefix}{message}{format_log_data(data)}{Style.RESET}"
+        full_message = f"{style}{message}{Style.RESET}"
     
     print(full_message)
     sys.stdout.flush()
@@ -84,11 +74,9 @@ def show_progress_bar(current, total, prefix_text='', length=40, fill='█', sta
 # --- Database Setup Function ---
 def create_database():
     """Creates the database and tables using the schema defined below."""
-    log("Initializing database", 'HEADING')
+    log("Initializing database", 'SUBHEADING')
     
     os.makedirs('data', exist_ok=True)
-    if not os.path.exists(DB_FILE):
-        log("Created 'data' directory.", 'SUCCESS', indent=1)
 
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -96,14 +84,17 @@ def create_database():
         tables = [row[0] for row in cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         ).fetchall()]
-        if tables:
-            log(f"Dropping {len(tables)} existing tables...", 'INFO', indent=1)
-            cursor.executescript(';'.join(f"DROP TABLE IF EXISTS {t}" for t in tables))
-
-        log(f"Creating {SCHEMA.count('CREATE TABLE')} new tables...", 'INFO', indent=1)
-        cursor.executescript(SCHEMA)
         
-    log("Database and tables created successfully.", 'SUCCESS')
+        if tables:
+            start_time = time.time()
+            for i, table in enumerate(tables):
+                show_progress_bar(i + 1, len(tables), prefix_text='Dropping tables', start_time=start_time)
+                cursor.execute(f"DROP TABLE IF EXISTS {table}")
+
+        table_count = SCHEMA.count('CREATE TABLE')
+        start_time = time.time()
+        cursor.executescript(SCHEMA)
+        show_progress_bar(table_count, table_count, prefix_text='Creating tables', start_time=start_time)
 
 # --- Optimized Database Schema ---
 SCHEMA = """

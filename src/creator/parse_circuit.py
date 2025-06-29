@@ -12,7 +12,6 @@ import time
 
 def run_circuit_parsers():
     """Runs all circuit parsers."""
-    log("Processing Circuit Data...", 'SUBHEADING')
     parse_circuit_wiki()
     parse_circuit_f1()
 

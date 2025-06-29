@@ -24,7 +24,6 @@ def main():
             
             if command == 'api':
                 config.create_database()
-                log("Populating database from OpenF1 API", 'HEADING')
                 fetch_api.populate_database()
             elif command == 'wiki':
                 parse_circuit.parse_circuit_wiki()
@@ -55,19 +54,16 @@ def main():
                 sys.exit(1)
         else:
             # Default: run full process
-            log("Starting the Full Formula 1 Data Setup Process", 'HEADING')
-            
+            log("Start Data Fetching and Enrichment Process", 'HEADING')
             config.create_database()
-            log("Populating database from OpenF1 API", 'HEADING')
             fetch_api.populate_database()
             
-            log("Enriching Data from External Sources", 'HEADING')
-            
+            log("Parsing Data from External Sources", 'SUBHEADING')
             parse_circuit.run_circuit_parsers()
             parse_team.run_team_parsers()
             parse_driver.run_driver_parsers()
-        
-        log("Process completed successfully!", 'SUCCESS')
+
+            print() # Improve output readability
         
     except Exception as e:
         log(f"An unexpected error occurred during the process", 'ERROR', data={'error': str(e)})
