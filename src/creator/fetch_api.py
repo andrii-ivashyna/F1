@@ -137,7 +137,7 @@ def populate_database():
     
     final_drivers = list(latest_driver_records.values())
 
-    unique_teams = {d.get('team_name') for d in final_drivers if d.get('team_name')}
+    unique_teams = sorted(list(set(d.get('team_name') for d in final_drivers if d.get('team_name'))))
     driver_countries = {d.get('country_name'): d.get('country_code') for d in final_drivers if d.get('country_name')}
     unique_countries.update(driver_countries) # Update unique_countries with driver-specific countries if any
 
