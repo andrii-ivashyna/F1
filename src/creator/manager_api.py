@@ -217,7 +217,7 @@ def populate_database():
     start_time_weather = time.time()
     for i, entry in enumerate(weather_data):
         show_progress_bar(i + 1, len(weather_data), prefix_text=f'DB | Weather | {len(weather_data)}', start_time=start_time_weather)
-        cursor.execute("INSERT INTO weather (air_temperature, track_temperature, humidity, air_pressure, wind_direction, wind_speed, is_raining, date, session_fk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", entry)
+        cursor.execute("INSERT INTO weather (air_temp_C, track_temp_C, rel_humidity_pct, air_pressure_mbar, wind_direction_deg, wind_speed_mps, is_raining, date, session_fk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", entry)
     conn.commit()
 
     conn.close()

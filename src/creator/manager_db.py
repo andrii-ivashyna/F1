@@ -145,12 +145,12 @@ CREATE TABLE session_driver (
 
 CREATE TABLE weather (
     weather_id INTEGER PRIMARY KEY,
-    air_temperature REAL,
-    track_temperature REAL,
-    humidity SMALLINT,
-    air_pressure SMALLINT,
-    wind_direction SMALLINT,
-    wind_speed REAL,
+    air_temp_C REAL,
+    track_temp_C REAL,
+    rel_humidity_pct SMALLINT,
+    air_pressure_mbar SMALLINT,
+    wind_direction_deg SMALLINT,
+    wind_speed_mps REAL,
     is_raining BOOLEAN,
     date TEXT,
     session_fk SMALLINT,
