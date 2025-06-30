@@ -23,7 +23,7 @@ def parse_driver_f1():
         total_drivers = len(db_drivers)
         start_time_f1_drivers = time.time()
         for i, (driver_code, driver_name) in enumerate(db_drivers):
-            show_progress_bar(i + 1, total_drivers, prefix_text='Formula1.com: Driver', start_time=start_time_f1_drivers)
+            show_progress_bar(i + 1, total_drivers, prefix_text=f'F1.com | Driver | {total_drivers}', start_time=start_time_f1_drivers)
             if not driver_name: continue
 
             url_name = driver_name.lower().replace(' ', '-')

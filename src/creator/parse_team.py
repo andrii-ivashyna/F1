@@ -38,7 +38,7 @@ def parse_team_wiki():
         total_constructors = len(constructors_df)
         start_time_wiki_teams = time.time()
         for i, row in constructors_df.iterrows():
-            show_progress_bar(i + 1, total_constructors, prefix_text='Wikipedia:    Team', start_time=start_time_wiki_teams)
+            show_progress_bar(i + 1, total_constructors, prefix_text=f'Wiki | Team | {total_constructors}', start_time=start_time_wiki_teams)
             name = re.sub(r'\[.*?\]', '', str(row[col])).strip()
             country = re.sub(r'\[.*?\]', '', str(row.get('Licensed in', ''))).strip()
             if name in ['nan', '', 'NaN']: continue
@@ -67,7 +67,7 @@ def parse_team_f1():
         total_teams = len(db_teams)
         start_time_f1_teams = time.time()
         for i, (team_id, team_name) in enumerate(db_teams):
-            show_progress_bar(i + 1, total_teams, prefix_text='Formula1.com: Team', start_time=start_time_f1_teams)
+            show_progress_bar(i + 1, total_teams, prefix_text='F1.com | Team | total_teams', start_time=start_time_f1_teams)
             if not team_name: continue
 
             url_name = team_name.lower().replace(' ', '-')

@@ -21,9 +21,29 @@ class Style:
     def url(url_string):
         """Formats a URL for cleaner log output."""
         return f".../{url_string.split('/')[-1]}" if isinstance(url_string, str) and '/' in url_string else url_string
+    
+    @staticmethod
+    def yellow(text):
+        """Makes text yellow while preserving surrounding colors."""
+        return f"{Style.YELLOW}{text}{Style.RESET}"
+    
+    @staticmethod
+    def green(text):
+        """Makes text green while preserving surrounding colors."""
+        return f"{Style.GREEN}{text}{Style.RESET}"
+    
+    @staticmethod
+    def red(text):
+        """Makes text red while preserving surrounding colors."""
+        return f"{Style.RED}{text}{Style.RESET}"
+    
+    @staticmethod
+    def cyan(text):
+        """Makes text cyan while preserving surrounding colors."""
+        return f"{Style.CYAN}{text}{Style.RESET}"
 
 LOG_STYLES = {
-    'INFO': Style.CYAN, 'SUCCESS': Style.GREEN, 'WARNING': Style.YELLOW, 'ERROR': Style.RED,
+    'INFO': Style.CYAN, 'SUCCESS': f'{Style.BOLD}{Style.GREEN}', 'WARNING': f'{Style.BOLD}{Style.YELLOW}', 'ERROR': f'{Style.BOLD}{Style.RED}',
     'HEADING': f'{Style.BOLD}{Style.WHITE}', 'SUBHEADING': f'{Style.BOLD}{Style.MAGENTA}'
 }
 
@@ -44,10 +64,10 @@ def log(message, msg_type='INFO', indent=0, data=None):
 
 def show_progress_bar(current, total, prefix_text='', length=40, fill='█', start_time=None):
     """
-    Displays a dynamic progress bar in the console.
+    Displays a dynamic progress bar in the console with improved formatting.
     :param current: Current iteration.
     :param total: Total iterations.
-    :param prefix_text: The descriptive text for the progress bar (e.g., "API Countries").
+    :param prefix_text: The descriptive text for the progress bar (e.g., "API | Meetings").
     :param length: Character length of the bar.
     :param fill: Bar fill character.
     :param start_time: Optional, time.time() when the operation started, to display elapsed time.
@@ -61,14 +81,23 @@ def show_progress_bar(current, total, prefix_text='', length=40, fill='█', sta
         elapsed = time.time() - start_time
         time_str = f" {Style.YELLOW}({elapsed:.1f}s){Style.RESET}"
 
-    # Pad prefix_text to a consistent length, then add "   " before the bar
-    # Max length for "Formula1.com Circuits" is 22 chars. Let's pad to 22 chars for consistent alignment, then add 3 spaces.
-    padded_label = f"{prefix_text:<22}   "
+    # Format: "API | Meetings | 12          |████████████████| 100.0% (0.2s)"
+    # Split prefix_text by ' | ' to get components
+    parts = prefix_text.split(' | ')
+    if len(parts) >= 2:
+        # Format with aligned columns
+        category = f"{parts[0]:<7}"  # Category (API, DB, etc.) - 7 chars
+        operation = f"{parts[1]:<15}"  # Operation (Meetings, etc.) - 15 chars
+        count = f"{total:<7}"  # Total count - 7 chars
+        formatted_prefix = f"{Style.CYAN}{category}| {operation}| {count}|"
+    else:
+        # Fallback for single part or different format
+        formatted_prefix = f"{Style.CYAN}{prefix_text:<30}|"
 
-    sys.stdout.write(f"\r{Style.CYAN}{padded_label}|{bar}| {percent}%{Style.RESET}{time_str}")
+    sys.stdout.write(f"\r{formatted_prefix}{bar}| {percent}%{Style.RESET}{time_str}")
     sys.stdout.flush()
     if current == total:
-        sys.stdout.write(f"\r{Style.CYAN}{padded_label}|{bar}| {percent}%{Style.RESET}{time_str}\n")
+        sys.stdout.write(f"\r{formatted_prefix}{bar}| {percent}%{Style.RESET}{time_str}\n")
         sys.stdout.flush()
 
 # --- Database Setup Function ---
@@ -88,13 +117,13 @@ def create_database():
         if tables:
             start_time = time.time()
             for i, table in enumerate(tables):
-                show_progress_bar(i + 1, len(tables), prefix_text='Dropping tables', start_time=start_time)
+                show_progress_bar(i + 1, len(tables), prefix_text=f'DB | Drop tables | {len(tables)}', start_time=start_time)
                 cursor.execute(f"DROP TABLE IF EXISTS {table}")
 
         table_count = SCHEMA.count('CREATE TABLE')
         start_time = time.time()
         cursor.executescript(SCHEMA)
-        show_progress_bar(table_count, table_count, prefix_text='Creating tables', start_time=start_time)
+        show_progress_bar(table_count, table_count, prefix_text=f'DB | Create tables | {table_count}', start_time=start_time)
 
 # --- Optimized Database Schema ---
 SCHEMA = """

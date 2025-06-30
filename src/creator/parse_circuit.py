@@ -34,7 +34,7 @@ def parse_circuit_wiki():
         total_circuits = len(active_circuits_df)
         start_time_wiki_circuits = time.time()
         for i, (_, row) in enumerate(active_circuits_df.iterrows()):
-            show_progress_bar(i + 1, total_circuits, prefix_text='Wikipedia:    Circuit', start_time=start_time_wiki_circuits)
+            show_progress_bar(i + 1, total_circuits, prefix_text=f'Wiki | Circuit | {total_circuits}', start_time=start_time_wiki_circuits)
             for key, name in db_circuits:
                 if name and (name.lower() in str(row['Location']).lower() or name.lower() in str(row['Circuit']).lower()):
                     update_data = {
@@ -72,7 +72,7 @@ def parse_circuit_f1():
         total_circuits = len(circuit_data)
         start_time_f1_circuits = time.time()
         for i, (key, name, country, date) in enumerate(circuit_data):
-            show_progress_bar(i + 1, total_circuits, prefix_text='Formula1.com: Circuit', start_time=start_time_f1_circuits)
+            show_progress_bar(i + 1, total_circuits, prefix_text=f'F1.com | Circuit | {total_circuits}', start_time=start_time_f1_circuits)
             if not all([key, country, date]): continue
             country_url = country.lower().replace(' ', '-')
             country_map = {'united-kingdom': 'great-britain', 'united-arab-emirates': 'abudhabi', 'usa': 'united-states'}

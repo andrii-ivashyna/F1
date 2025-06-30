@@ -1,12 +1,14 @@
 # main.py
 
 import sys
+import time
+from datetime import datetime
 import config
 import fetch_api
 import parse_circuit
 import parse_team
 import parse_driver
-from config import log
+from config import log, Style
 
 # --- IMPORTANT ---
 # Before running, please install the required libraries:
@@ -54,6 +56,9 @@ def main():
                 sys.exit(1)
         else:
             # Default: run full process
+            start_time = time.time()
+            start_datetime = datetime.now()
+            
             log("Start Data Fetching and Enrichment Process", 'HEADING')
             config.create_database()
             fetch_api.populate_database()
@@ -63,7 +68,17 @@ def main():
             parse_team.run_team_parsers()
             parse_driver.run_driver_parsers()
 
-            print() # Improve output readability
+            # Process completion summary
+            end_time = time.time()
+            end_datetime = datetime.now()
+            duration = end_time - start_time
+            
+            print()
+            log(f"Process completed successfully!", 'SUCCESS')
+            log(f"Start time: {Style.yellow(start_datetime.strftime('%H:%M:%S'))}", 'SUCCESS')
+            log(f"End time: {Style.yellow(end_datetime.strftime('%H:%M:%S'))}", 'SUCCESS')
+            log(f"Total duration: {Style.yellow(f'{duration:.1f}s')}", 'SUCCESS')
+            print()
         
     except Exception as e:
         log(f"An unexpected error occurred during the process", 'ERROR', data={'error': str(e)})
