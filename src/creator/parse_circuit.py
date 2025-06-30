@@ -10,14 +10,14 @@ import config
 from config import log, show_progress_bar
 import time
 
-def run_circuit_parsers():
-    """Runs all circuit parsers."""
-    parse_circuit_wiki()
-    parse_circuit_f1()
-
 def parse_circuit_wiki():
     """Parses Wikipedia for F1 circuit data and updates the database."""
     try:
+        # Get total circuits count from database first
+        conn = sqlite3.connect(config.DB_FILE)
+        cursor = conn.cursor()
+        total_circuits_in_db = cursor.execute("SELECT COUNT(*) FROM circuit").fetchone()[0]
+        
         response = requests.get("https://en.wikipedia.org/wiki/List_of_Formula_One_circuits", timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
@@ -27,14 +27,11 @@ def parse_circuit_wiki():
 
         active_circuits_df = circuits_df[circuits_df['Circuit'].str.strip().str.endswith('*')].copy()
 
-        conn = sqlite3.connect(config.DB_FILE)
-        cursor = conn.cursor()
         db_circuits = cursor.execute("SELECT circuit_key, circuit_name FROM circuit").fetchall()
 
-        total_circuits = len(active_circuits_df)
         start_time_wiki_circuits = time.time()
         for i, (_, row) in enumerate(active_circuits_df.iterrows()):
-            show_progress_bar(i + 1, total_circuits, prefix_text=f'Wiki | Circuit | {total_circuits}', start_time=start_time_wiki_circuits)
+            show_progress_bar(i + 1, len(active_circuits_df), prefix_text=f'Wiki | Circuit | {total_circuits_in_db}', start_time=start_time_wiki_circuits)
             for key, name in db_circuits:
                 if name and (name.lower() in str(row['Location']).lower() or name.lower() in str(row['Circuit']).lower()):
                     update_data = {
@@ -63,16 +60,19 @@ def parse_circuit_f1():
     try:
         conn = sqlite3.connect(config.DB_FILE)
         cursor = conn.cursor()
+        
+        # Get total circuits count from database first
+        total_circuits_in_db = cursor.execute("SELECT COUNT(*) FROM circuit").fetchone()[0]
+        
         circuit_data = cursor.execute("""
             SELECT DISTINCT c.circuit_key, c.circuit_name, co.country_name, m.date_start
             FROM circuit c JOIN meeting m ON c.circuit_key = m.circuit_fk JOIN country co ON c.country_fk = co.country_code
             WHERE m.date_start IS NOT NULL ORDER BY m.date_start DESC
         """).fetchall()
 
-        total_circuits = len(circuit_data)
         start_time_f1_circuits = time.time()
         for i, (key, name, country, date) in enumerate(circuit_data):
-            show_progress_bar(i + 1, total_circuits, prefix_text=f'F1.com | Circuit | {total_circuits}', start_time=start_time_f1_circuits)
+            show_progress_bar(i + 1, len(circuit_data), prefix_text=f'F1.com | Circuit | {total_circuits_in_db}', start_time=start_time_f1_circuits)
             if not all([key, country, date]): continue
             country_url = country.lower().replace(' ', '-')
             country_map = {'united-kingdom': 'great-britain', 'united-arab-emirates': 'abudhabi', 'usa': 'united-states'}

@@ -1,14 +1,16 @@
 # main.py
+"""
+Main application runner for the Formula 1 data fetching and enrichment process.
+Handles command-line arguments and orchestrates the data pipeline.
+"""
 
 import sys
 import time
 from datetime import datetime
-import config
-import fetch_api
-import parse_circuit
-import parse_team
-import parse_driver
-from config import log, Style
+import manager_parse
+from config import log, show_completion_summary
+from manager_db import create_database
+from manager_api import populate_database
 
 # --- IMPORTANT ---
 # Before running, please install the required libraries:
@@ -25,60 +27,44 @@ def main():
             log(f"Running command: {command}", 'HEADING')
             
             if command == 'api':
-                config.create_database()
-                fetch_api.populate_database()
+                create_database()
+                populate_database()
             elif command == 'wiki':
-                parse_circuit.parse_circuit_wiki()
-                parse_team.parse_team_wiki()
+                manager_parse.parse_circuit_wiki()
+                manager_parse.parse_team_wiki()
             elif command == 'f1':
-                parse_circuit.parse_circuit_f1()
-                parse_team.parse_team_f1()
-                parse_driver.parse_driver_f1()
+                manager_parse.parse_circuit_f1()
+                manager_parse.parse_team_f1()
+                manager_parse.parse_driver_f1()
             elif command == 'circuit':
-                parse_circuit.run_circuit_parsers()
+                manager_parse.run_circuit_parsers()
             elif command == 'team':
-                parse_team.run_team_parsers()
+                manager_parse.run_team_parsers()
             elif command == 'driver':
-                parse_driver.run_driver_parsers()
+                manager_parse.run_driver_parsers()
             elif command == 'circuit-wiki':
-                parse_circuit.parse_circuit_wiki()
+                manager_parse.parse_circuit_wiki()
             elif command == 'circuit-f1':
-                parse_circuit.parse_circuit_f1()
+                manager_parse.parse_circuit_f1()
             elif command == 'team-wiki':
-                parse_team.parse_team_wiki()
+                manager_parse.parse_team_wiki()
             elif command == 'team-f1':
-                parse_team.parse_team_f1()
+                manager_parse.parse_team_f1()
             elif command == 'driver-f1':
-                parse_driver.parse_driver_f1()
+                manager_parse.parse_driver_f1()
             else:
                 log(f"Unknown command: {command}", 'ERROR')
                 log("See --help for available commands.", 'INFO')
                 sys.exit(1)
         else:
             # Default: run full process
-            start_time = time.time()
-            start_datetime = datetime.now()
+            start_time, start_datetime = time.time(), datetime.now()
             
             log("Start Data Fetching and Enrichment Process", 'HEADING')
-            config.create_database()
-            fetch_api.populate_database()
-            
-            log("Parsing Data from External Sources", 'SUBHEADING')
-            parse_circuit.run_circuit_parsers()
-            parse_team.run_team_parsers()
-            parse_driver.run_driver_parsers()
-
-            # Process completion summary
-            end_time = time.time()
-            end_datetime = datetime.now()
-            duration = end_time - start_time
-            
-            print()
-            log(f"Process completed successfully!", 'SUCCESS')
-            log(f"Start time: {Style.yellow(start_datetime.strftime('%H:%M:%S'))}", 'SUCCESS')
-            log(f"End time: {Style.yellow(end_datetime.strftime('%H:%M:%S'))}", 'SUCCESS')
-            log(f"Total duration: {Style.yellow(f'{duration:.1f}s')}", 'SUCCESS')
-            print()
+            create_database()
+            populate_database()
+            manager_parse.run_all_parsers()
+            show_completion_summary(start_time, start_datetime)
         
     except Exception as e:
         log(f"An unexpected error occurred during the process", 'ERROR', data={'error': str(e)})

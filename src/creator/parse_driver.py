@@ -6,12 +6,8 @@ import re
 from bs4 import BeautifulSoup
 import config
 from config import log, show_progress_bar
-from fetch_api import get_country_code
+from manager_api import get_country_code
 import time
-
-def run_driver_parsers():
-    """Runs all driver parsers."""
-    parse_driver_f1()
 
 def parse_driver_f1():
     """Parses F1 official site for driver data and updates the database."""

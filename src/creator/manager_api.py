@@ -1,35 +1,15 @@
-# fetch_api.py
+# manager_api.py
+"""
+API client for fetching Formula 1 data from OpenF1 API and populating the database.
+"""
 
 import sqlite3
 import time
 import requests
-import pycountry
 import config
-import sys
 from config import log, show_progress_bar
+from manager_db import format_int_date, format_real_date, format_gmt_offset, get_country_code
 
-# --- Formatting Helpers ---
-def format_int_date(date_str):
-    if isinstance(date_str, str) and len(date_str) > 19: return date_str[:19]
-    return date_str
-
-def format_real_date(date_str):
-    """Formats weather date string to ISO-MM-DDTHH:MM:SS.sss"""
-    if isinstance(date_str, str) and len(date_str) > 23: return date_str[:23]
-    return date_str
-
-def format_gmt_offset(gmt_str):
-    if isinstance(gmt_str, str) and len(gmt_str) > 5: return gmt_str[:6] if gmt_str.startswith('-') else gmt_str[:5]
-    return gmt_str
-
-def get_country_code(country_name):
-    if not country_name: return None
-    try:
-        return pycountry.countries.search_fuzzy(country_name)[0].alpha_3
-    except LookupError:
-        return None
-
-# --- API Helper ---
 def get_api_data_bulk(endpoint, params=None, max_tries=5):
     """Fetches data from an API endpoint with a clean progress message."""
     tries = 1
@@ -57,7 +37,6 @@ def get_api_data_bulk(endpoint, params=None, max_tries=5):
                 return None
     return None
 
-# --- Data Population ---
 def populate_database():
     """Fetches API data in bulk and populates the database efficiently."""
     log("Fetching data from OpenF1 API", 'SUBHEADING')
@@ -82,32 +61,44 @@ def populate_database():
     cursor = conn.cursor()
 
     # --- Process Meetings, Circuits & Countries ---
-    unique_countries = {m['country_name']: get_country_code(m['country_name']) for m in meetings if m.get('country_name')}
-    
     # Insert meetings
     start_time_meetings = time.time()
     for i, meeting in enumerate(meetings):
         show_progress_bar(i + 1, len(meetings), prefix_text=f'DB | Meeting | {len(meetings)}', start_time=start_time_meetings)
         cursor.execute("INSERT OR IGNORE INTO meeting (meeting_key, meeting_name, meeting_official_name, date_start, circuit_fk) VALUES (?, ?, ?, ?, ?)",
             (meeting.get('meeting_key'), meeting.get('meeting_name'), meeting.get('meeting_official_name'),
-             format_int_date(meeting.get('date_start')), meeting.get('circuit_key')))
-    conn.commit()
-
-    # Insert circuits
-    start_time_circuits = time.time()
-    for i, meeting in enumerate(meetings):
-        show_progress_bar(i + 1, len(meetings), prefix_text=f'DB | Circuit | {len(meetings)}', start_time=start_time_circuits)
-        cursor.execute("INSERT OR IGNORE INTO circuit (circuit_key, circuit_name, location, gmt_offset, country_fk) VALUES (?, ?, ?, ?, ?)",
-            (meeting.get('circuit_key'), meeting.get('circuit_short_name'), meeting.get('location'), 
-             format_gmt_offset(meeting.get('gmt_offset')), unique_countries.get(meeting.get('country_name'))))
+            format_int_date(meeting.get('date_start')), meeting.get('circuit_key')))
     conn.commit()
 
     # Insert countries
+    unique_countries = {m['country_name']: get_country_code(m['country_name']) for m in meetings if m.get('country_name')}
     country_data = [(code, name) for name, code in unique_countries.items() if name and code]
     start_time_countries = time.time()
     for i, (code, name) in enumerate(country_data):
         show_progress_bar(i + 1, len(country_data), prefix_text=f'DB | Country | {len(country_data)}', start_time=start_time_countries)
         cursor.execute("INSERT OR IGNORE INTO country (country_code, country_name) VALUES (?, ?)", (code, name))
+    conn.commit()
+
+    # Insert circuits
+    unique_circuits = {
+        m['circuit_key']: {
+            'circuit_key': m['circuit_key'],
+            'circuit_short_name': m.get('circuit_short_name'),
+            'location': m.get('location'),
+            'gmt_offset': m.get('gmt_offset'),
+            'country_name': m.get('country_name')
+        }
+        for m in meetings
+        if (ck := m.get('circuit_key')) and ck not in set() and not set().add(ck)
+    }
+
+    start_time_circuits = time.time()
+    circuit_data = list(unique_circuits.values())
+    for i, circuit in enumerate(circuit_data):
+        show_progress_bar(i + 1, len(circuit_data), prefix_text=f'DB | Circuit | {len(circuit_data)}', start_time=start_time_circuits)
+        cursor.execute("INSERT OR IGNORE INTO circuit (circuit_key, circuit_name, location, gmt_offset, country_fk) VALUES (?, ?, ?, ?, ?)",
+            (circuit['circuit_key'], circuit['circuit_short_name'], circuit['location'], 
+            format_gmt_offset(circuit['gmt_offset']), unique_countries.get(circuit['country_name'])))
     conn.commit()
 
     # --- Process Sessions ---

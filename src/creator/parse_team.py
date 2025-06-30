@@ -8,13 +8,8 @@ from bs4 import BeautifulSoup
 from io import StringIO
 import config
 from config import log, show_progress_bar
-from fetch_api import get_country_code
+from manager_api import get_country_code
 import time
-
-def run_team_parsers():
-    """Runs all team parsers."""
-    parse_team_wiki()
-    parse_team_f1()
 
 def parse_team_wiki():
     """Parses Wikipedia for F1 constructor data and updates the database."""
@@ -67,7 +62,7 @@ def parse_team_f1():
         total_teams = len(db_teams)
         start_time_f1_teams = time.time()
         for i, (team_id, team_name) in enumerate(db_teams):
-            show_progress_bar(i + 1, total_teams, prefix_text='F1.com | Team | total_teams', start_time=start_time_f1_teams)
+            show_progress_bar(i + 1, total_teams, prefix_text=f'F1.com | Team | {total_teams}', start_time=start_time_f1_teams)
             if not team_name: continue
 
             url_name = team_name.lower().replace(' ', '-')
