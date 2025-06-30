@@ -154,27 +154,52 @@ def populate_database():
     }
 
     # --- Process Join Tables ---
-    # Insert meeting_driver links
+    # Insert meeting_driver links - use ALL driver records, not just latest
     meeting_driver_data = []
-    for i, driver in enumerate(final_drivers):
+    meeting_driver_seen = set()  # To avoid duplicates
+
+    for driver in drivers:
         code = driver.get('name_acronym')
-        team_id = team_name_to_id.get(driver.get('team_name'))
-        meeting_key = driver_meeting_keys.get(code)
-        if all([meeting_key, code, team_id]):
-            meeting_driver_data.append((meeting_key, code, team_id, driver.get('driver_number')))
-    
+        session_key = driver.get('session_key')
+        meeting_key = session_to_meeting_map.get(session_key)
+        team_name = driver.get('team_name')
+        team_id = team_name_to_id.get(team_name)
+        driver_number = driver.get('driver_number')
+        
+        if all([meeting_key, code, team_id, driver_number]):
+            # Create unique key to avoid duplicates
+            unique_key = (meeting_key, code, team_id, driver_number)
+            if unique_key not in meeting_driver_seen:
+                meeting_driver_data.append(unique_key)
+                meeting_driver_seen.add(unique_key)
+
+    # Sort by meeting_key, then driver_code
+    meeting_driver_data.sort(key=lambda x: (x[0], x[1]))
+
     start_time_meeting_driver = time.time()
     for i, entry in enumerate(meeting_driver_data):
         show_progress_bar(i + 1, len(meeting_driver_data), prefix_text=f'DB | Meeting-Driver | {len(meeting_driver_data)}', start_time=start_time_meeting_driver)
         cursor.execute("INSERT OR IGNORE INTO meeting_driver (meeting_fk, driver_fk, team_fk, driver_number) VALUES (?, ?, ?, ?)", entry)
     conn.commit()
 
-    # Insert session_driver links
-    valid_driver_codes = set(latest_driver_records.keys())
-    session_driver_pairs = {(d.get('session_key'), d.get('name_acronym'))
-                            for d in drivers if d.get('name_acronym') in valid_driver_codes and d.get('session_key')}
-    
-    session_driver_data = list(session_driver_pairs)
+    # Insert session_driver links - use ALL driver records with proper sorting
+    session_driver_data = []
+    session_driver_seen = set()  # To avoid duplicates
+
+    for driver in drivers:
+        code = driver.get('name_acronym')
+        session_key = driver.get('session_key')
+        
+        if code and session_key:
+            # Create unique key to avoid duplicates
+            unique_key = (session_key, code)
+            if unique_key not in session_driver_seen:
+                session_driver_data.append(unique_key)
+                session_driver_seen.add(unique_key)
+
+    # Sort by session_key, then driver_code
+    session_driver_data.sort(key=lambda x: (x[0], x[1]))
+
     start_time_session_driver = time.time()
     for i, pair in enumerate(session_driver_data):
         show_progress_bar(i + 1, len(session_driver_data), prefix_text=f'DB | Session-Driver | {len(session_driver_data)}', start_time=start_time_session_driver)
