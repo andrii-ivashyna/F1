@@ -39,15 +39,14 @@ def parse_circuit_wiki():
                         'location': str(row['Location']),
                         'type': 'street' if 'street' in str(row['Type']).lower() else 'race',
                         'direction': 'anti-clockwise' if 'anti' in str(row['Direction']).lower() else 'clockwise',
-                        'length_km': (m.group(1) if (m := re.search(r"(\d+\.\d+)", str(row.get('Last length used')))) else None),
                         'turns': (m.group(0) if (m := re.search(r'\d+', str(row.get('Turns')))) else None)
                     }
                     cursor.execute("""
-                        UPDATE circuit SET circuit_official_name=?, location=?, type=?, direction=?, length_km=?, turns=? 
+                        UPDATE circuit SET circuit_official_name=?, location=?, type=?, direction=?, turns=? 
                         WHERE circuit_key=?
                     """, (
                         update_data['official_name'], update_data['location'], update_data['type'], 
-                        update_data['direction'], update_data['length_km'], update_data['turns'], key
+                        update_data['direction'], update_data['turns'], key
                     ))
                     break
         conn.commit()
@@ -87,6 +86,7 @@ def parse_circuit_f1():
                 soup = BeautifulSoup(response.text, 'lxml')
                 
                 laps = None
+                length_km = None
                 map_image_url = None
 
                 laps_dt = soup.find('dt', class_=re.compile(r'typography-module_body-xs-semibold'), string=re.compile(r'Number of Laps', re.I))
@@ -95,14 +95,20 @@ def parse_circuit_f1():
                     if laps_dd and (match := re.search(r'(\d+)', laps_dd.get_text(strip=True))):
                         laps = int(match.group(1))
                 
+                length_dt = soup.find('dt', class_=re.compile(r'typography-module_body-s-compact-semibold'), string=re.compile(r'Circuit Length', re.I))
+                if length_dt:
+                    length_dd = length_dt.find_next_sibling('dd', class_=re.compile(r'typography-module_desktop-headline-small-bold'))
+                    if length_dd and (match := re.search(r'(\d+\.\d+)', length_dd.get_text(strip=True))):
+                        length_km = float(match.group(1))
+                
                 circuit_img = soup.find('img', class_='w-full h-full object-contain')
                 if circuit_img and (src := circuit_img.get('src')):
                     map_image_url = src if src.startswith('http') else 'https://www.formula1.com' + src
                 
-                if laps or map_image_url:
-                    cursor.execute("UPDATE circuit SET laps=COALESCE(?,laps), map_image_url=COALESCE(?,map_image_url) WHERE circuit_key=?", (laps, map_image_url, key))
+                if laps or length_km or map_image_url:
+                    cursor.execute("UPDATE circuit SET laps=COALESCE(?,laps), length_km=COALESCE(?,length_km), map_image_url=COALESCE(?,map_image_url) WHERE circuit_key=?", (laps, length_km, map_image_url, key))
                 else:
-                    log("No specific data (laps, map) found on page.", 'WARNING', indent=2)
+                    log("No specific data (laps, length, map) found on page.", 'WARNING', indent=2)
             except Exception as e:
                 log("Could not fetch or parse data.", 'ERROR', indent=2, data={'url': config.Style.url(f1_url), 'error': str(e)})
         conn.commit()
