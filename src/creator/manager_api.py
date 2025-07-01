@@ -51,8 +51,10 @@ def populate_database():
     sessions = get_api_data_bulk('sessions', {'meeting_key>': min_meeting_key})
     drivers = get_api_data_bulk('drivers', {'meeting_key>': min_meeting_key})
     weather = get_api_data_bulk('weather', {'meeting_key>': min_meeting_key})
+    pits = get_api_data_bulk('pit', {'meeting_key>': min_meeting_key})
+    stints = get_api_data_bulk('stints', {'meeting_key>': min_meeting_key})
 
-    if not all([sessions, drivers, weather]):
+    if not all([sessions, drivers, weather, pits, stints]):
         log("Halting process: one or more subsequent API calls failed.", 'ERROR')
         return
 
@@ -218,6 +220,55 @@ def populate_database():
     for i, entry in enumerate(weather_data):
         show_progress_bar(i + 1, len(weather_data), prefix_text=f'DB | Weather | {len(weather_data)}', start_time=start_time_weather)
         cursor.execute("INSERT INTO weather (air_temp_C, track_temp_C, rel_humidity_pct, air_pressure_mbar, wind_direction_deg, wind_speed_mps, is_raining, date, session_fk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", entry)
+    conn.commit()
+
+    # --- Build helper map for session/driver lookups ---
+    session_driver_number_to_code_map = {
+        (d['session_key'], d['driver_number']): d['name_acronym']
+        for d in drivers if all(k in d for k in ['session_key', 'driver_number', 'name_acronym'])
+    }
+
+    # --- Process Pit Data ---
+    pit_data = []
+    for p in pits:
+        session_key = p.get('session_key')
+        driver_number = p.get('driver_number')
+        driver_code = session_driver_number_to_code_map.get((session_key, driver_number))
+        if driver_code:
+            pit_data.append((
+                p.get('lap_number'),
+                p.get('pit_duration'),
+                session_key,
+                driver_code
+            ))
+
+    start_time_pits = time.time()
+    for i, entry in enumerate(pit_data):
+        show_progress_bar(i + 1, len(pit_data), prefix_text=f'DB | Pit | {len(pit_data)}', start_time=start_time_pits)
+        cursor.execute("INSERT INTO pit (lap_num, pit_dur_s, session_fk, driver_fk) VALUES (?, ?, ?, ?)", entry)
+    conn.commit()
+    
+    # --- Process Stint Data ---
+    stint_data = []
+    for s in stints:
+        session_key = s.get('session_key')
+        driver_number = s.get('driver_number')
+        driver_code = session_driver_number_to_code_map.get((session_key, driver_number))
+        if driver_code:
+            stint_data.append((
+                s.get('stint_number'),
+                s.get('compound'),
+                s.get('lap_start'),
+                s.get('lap_end'),
+                s.get('tyre_age_at_start'),
+                session_key,
+                driver_code
+            ))
+
+    start_time_stints = time.time()
+    for i, entry in enumerate(stint_data):
+        show_progress_bar(i + 1, len(stint_data), prefix_text=f'DB | Stint | {len(stint_data)}', start_time=start_time_stints)
+        cursor.execute("INSERT INTO stint (stint_num, tyre_compound, lap_num_start, lap_num_end, tyre_age_laps, session_fk, driver_fk) VALUES (?, ?, ?, ?, ?, ?, ?)", entry)
     conn.commit()
 
     conn.close()
