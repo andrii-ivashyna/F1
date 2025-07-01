@@ -55,8 +55,10 @@ def populate_database():
     pits = get_api_data_bulk('pit', {'meeting_key>': min_meeting_key})
     stints = get_api_data_bulk('stints', {'meeting_key>': min_meeting_key})
     team_radio = get_api_data_bulk('team_radio', {'meeting_key>': min_meeting_key})
+    race_control = get_api_data_bulk('race_control', {'meeting_key>': min_meeting_key})
 
-    if not all([sessions, drivers, weather, pits, stints, team_radio]):
+
+    if not all([sessions, drivers, weather, pits, stints, team_radio, race_control]):
         log("Halting process: one or more subsequent API calls failed.", 'ERROR')
         return
 
@@ -310,6 +312,31 @@ def populate_database():
     for i, entry in enumerate(radio_data):
         show_progress_bar(i + 1, len(radio_data), prefix_text=f'DB | Radio | {len(radio_data)}', start_time=start_time_radio)
         cursor.execute("INSERT INTO radio (timestamp_utc, session_fk, driver_fk, radio_url) VALUES (?, ?, ?, ?)", entry)
+    conn.commit()
+
+    # --- Process Event Data ---
+    event_data = []
+    for ev in race_control:
+        session_key = ev.get('session_key')
+        driver_number = ev.get('driver_number')
+        driver_code = session_driver_number_to_code_map.get((session_key, driver_number)) if driver_number else None
+
+        event_data.append((
+            ev.get('category'),
+            ev.get('flag'),
+            ev.get('scope'),
+            ev.get('message'),
+            ev.get('lap_number'),
+            ev.get('sector'), # This will be inserted into sector_num
+            format_timestamp(ev.get('date'), 'int'),
+            session_key,
+            driver_code
+        ))
+
+    start_time_event = time.time()
+    for i, entry in enumerate(event_data):
+        show_progress_bar(i + 1, len(event_data), prefix_text=f'DB | Event | {len(event_data)}', start_time=start_time_event)
+        cursor.execute("INSERT INTO event (category, flag, scope, message, lap_num, sector_num, timestamp_utc, session_fk, driver_fk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", entry)
     conn.commit()
 
     conn.close()

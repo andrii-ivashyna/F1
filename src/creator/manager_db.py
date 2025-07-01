@@ -65,30 +65,30 @@ def create_database():
 # --- Optimized Database Schema ---
 SCHEMA = """
 CREATE TABLE country (
-    country_code CHAR(3) PRIMARY KEY,
-    country_name VARCHAR(50) UNIQUE
+    country_code TEXT PRIMARY KEY,
+    country_name TEXT UNIQUE
 );
 
 CREATE TABLE circuit (
     circuit_key SMALLINT PRIMARY KEY,
-    circuit_name VARCHAR(30),
-    circuit_official_name VARCHAR(100),
-    location VARCHAR(50),
+    circuit_name TEXT,
+    circuit_official_name TEXT,
+    location TEXT,
     type TEXT CHECK(type IN ('street', 'race')),
     direction TEXT CHECK(direction IN ('clockwise', 'anti-clockwise', 'both')),
     length_km REAL,
     laps SMALLINT,
     turns SMALLINT,
-    gmt_offset VARCHAR(6),
-    country_fk CHAR(3),
-    map_image_url VARCHAR(255),
+    gmt_offset TEXT,
+    country_fk TEXT,
+    map_image_url TEXT,
     FOREIGN KEY (country_fk) REFERENCES country(country_code)
 );
 
 CREATE TABLE meeting (
     meeting_key SMALLINT PRIMARY KEY,
-    meeting_name VARCHAR(50),
-    meeting_official_name VARCHAR(100),
+    meeting_name TEXT,
+    meeting_official_name TEXT,
     timestamp_utc TEXT,
     circuit_fk SMALLINT,
     FOREIGN KEY (circuit_fk) REFERENCES circuit(circuit_key)
@@ -96,8 +96,8 @@ CREATE TABLE meeting (
 
 CREATE TABLE session (
     session_key SMALLINT PRIMARY KEY,
-    session_name VARCHAR(30),
-    session_type VARCHAR(30),
+    session_name TEXT,
+    session_type TEXT,
     duration_utc TEXT,
     timestamp_utc TEXT,
     meeting_fk SMALLINT,
@@ -106,29 +106,29 @@ CREATE TABLE session (
 
 CREATE TABLE team (
     team_id INTEGER PRIMARY KEY,
-    team_name VARCHAR(30) UNIQUE,
-    team_official_name VARCHAR(100),
-    power_unit VARCHAR(30),
-    chassis VARCHAR(30),
-    country_fk CHAR(3),
-    logo_image_url VARCHAR(255),
-    car_image_url VARCHAR(255),
+    team_name TEXT UNIQUE,
+    team_official_name TEXT,
+    power_unit TEXT,
+    chassis TEXT,
+    country_fk TEXT,
+    logo_image_url TEXT,
+    car_image_url TEXT,
     FOREIGN KEY (country_fk) REFERENCES country(country_code)
 );
 
 CREATE TABLE driver (
-    driver_code CHAR(3) PRIMARY KEY,
-    driver_name VARCHAR(60),
+    driver_code TEXT PRIMARY KEY,
+    driver_name TEXT,
     driver_number SMALLINT,
-    country_fk CHAR(3),
-    driver_image_url VARCHAR(255),
-    number_image_url VARCHAR(255),
+    country_fk TEXT,
+    driver_image_url TEXT,
+    number_image_url TEXT,
     FOREIGN KEY (country_fk) REFERENCES country(country_code)
 );
 
 CREATE TABLE meeting_driver (
     meeting_fk SMALLINT,
-    driver_fk CHAR(3),
+    driver_fk TEXT,
     team_fk INTEGER,
     driver_number SMALLINT,
     PRIMARY KEY (meeting_fk, driver_fk),
@@ -139,7 +139,7 @@ CREATE TABLE meeting_driver (
 
 CREATE TABLE session_driver (
     session_fk SMALLINT,
-    driver_fk CHAR(3),
+    driver_fk TEXT,
     PRIMARY KEY (session_fk, driver_fk),
     FOREIGN KEY (session_fk) REFERENCES session(session_key),
     FOREIGN KEY (driver_fk) REFERENCES driver(driver_code)
@@ -164,19 +164,19 @@ CREATE TABLE pit (
     lap_num SMALLINT,
     duration_s REAL,
     session_fk SMALLINT,
-    driver_fk CHAR(3),
+    driver_fk TEXT,
     FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
 );
 
 CREATE TABLE stint (
     stint_id INTEGER PRIMARY KEY AUTOINCREMENT,
     stint_num SMALLINT,
-    tyre_compound VARCHAR(30),
+    tyre_compound TEXT,
     lap_num_start SMALLINT,
     lap_num_end SMALLINT,
     tyre_age_laps SMALLINT,
     session_fk SMALLINT,
-    driver_fk CHAR(3),
+    driver_fk TEXT,
     FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
 );
 
@@ -184,8 +184,22 @@ CREATE TABLE radio (
     radio_id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp_utc TEXT,
     session_fk SMALLINT,
-    driver_fk CHAR(3),
-    radio_url VARCHAR(255),
+    driver_fk TEXT,
+    radio_url TEXT,
+    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
+);
+
+CREATE TABLE event (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT,
+    flag TEXT,
+    scope TEXT,
+    message TEXT,
+    lap_num SMALLINT,
+    sector_num SMALLINT,
+    timestamp_utc TEXT,
+    session_fk SMALLINT,
+    driver_fk TEXT,
     FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
 );
 """
