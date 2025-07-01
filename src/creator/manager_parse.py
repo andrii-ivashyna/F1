@@ -193,7 +193,7 @@ def parse_team_wiki():
         for i, row in constructors_df.iterrows():
             show_progress_bar(i + 1, teams_to_process_count, prefix_text=f'Wiki | Team | {db_team_count}', start_time=start_time)
             name = re.sub(r'\[.*?\]', '', str(row[col])).strip()
-            country = re.sub(r'\[.*?\]', '', str(row.get('Licensed in', ''))).strip()
+            country = re.sub(r'\[.*?\]', '', str(row.get('Licensed in', '')).strip() if 'Licensed in' in row else '')
             if name in ['nan', '', 'NaN']: continue
             
             variants = [p.strip() for p in re.split(r'[/\n]+', name) if p.strip()]
@@ -248,9 +248,9 @@ def parse_circuit_f1():
         entity_name="Circuit",
         table_name="circuit",
         db_select_query="""
-            SELECT DISTINCT c.circuit_key, c.circuit_name, co.country_name, m.date_start
+            SELECT DISTINCT c.circuit_key, c.circuit_name, co.country_name, m.timestamp_utc
             FROM circuit c JOIN meeting m ON c.circuit_key = m.circuit_fk JOIN country co ON c.country_fk = co.country_code
-            WHERE m.date_start IS NOT NULL ORDER BY m.date_start DESC """,
+            WHERE m.timestamp_utc IS NOT NULL ORDER BY m.timestamp_utc DESC """,
         url_builder_func=_build_circuit_url_f1,
         data_extractor_func=_extract_circuit_data_f1,
         db_update_func=_update_circuit_db_f1
@@ -278,7 +278,10 @@ def parse_circuit_wiki():
         for i, (_, row) in enumerate(active_circuits_df.iterrows()):
             show_progress_bar(i + 1, circuits_to_process_count, prefix_text=f'Wiki | Circuit | {db_circuit_count}', start_time=start_time)
             for key, name in db_circuits:
-                if name and (name.lower() in str(row['Location']).lower() or name.lower() in str(row['Circuit']).lower()):
+                location_match = name and isinstance(row.get('Location'), str) and name.lower() in row['Location'].lower()
+                circuit_match = name and isinstance(row.get('Circuit'), str) and name.lower() in row['Circuit'].lower()
+
+                if location_match or circuit_match:
                     update_data = {
                         'official_name': str(row['Circuit']).strip().rstrip('*').strip(),
                         'location': str(row['Location']),
