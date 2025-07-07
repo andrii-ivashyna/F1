@@ -21,37 +21,28 @@ def main():
     Main function to run the full data fetching and enrichment process.
     Provides command-line arguments to run specific parts of the process.
     """
+    commands = {
+        'api': [create_database, populate_database],
+        'wiki': [manager_parse.parse_circuit_wiki, manager_parse.parse_team_wiki],
+        'f1': [manager_parse.parse_circuit_f1, manager_parse.parse_team_f1, manager_parse.parse_driver_f1],
+        'circuit': [manager_parse.run_circuit_parsers],
+        'team': [manager_parse.run_team_parsers],
+        'driver': [manager_parse.run_driver_parsers],
+        'circuit-wiki': [manager_parse.parse_circuit_wiki],
+        'circuit-f1': [manager_parse.parse_circuit_f1],
+        'team-wiki': [manager_parse.parse_team_wiki],
+        'team-f1': [manager_parse.parse_team_f1],
+        'driver-f1': [manager_parse.parse_driver_f1],
+    }
+
     try:
         if len(sys.argv) > 1:
             command = sys.argv[1].lower()
             log(f"Running command: {command}", 'HEADING')
-            
-            if command == 'api':
-                create_database()
-                populate_database()
-            elif command == 'wiki':
-                manager_parse.parse_circuit_wiki()
-                manager_parse.parse_team_wiki()
-            elif command == 'f1':
-                manager_parse.parse_circuit_f1()
-                manager_parse.parse_team_f1()
-                manager_parse.parse_driver_f1()
-            elif command == 'circuit':
-                manager_parse.run_circuit_parsers()
-            elif command == 'team':
-                manager_parse.run_team_parsers()
-            elif command == 'driver':
-                manager_parse.run_driver_parsers()
-            elif command == 'circuit-wiki':
-                manager_parse.parse_circuit_wiki()
-            elif command == 'circuit-f1':
-                manager_parse.parse_circuit_f1()
-            elif command == 'team-wiki':
-                manager_parse.parse_team_wiki()
-            elif command == 'team-f1':
-                manager_parse.parse_team_f1()
-            elif command == 'driver-f1':
-                manager_parse.parse_driver_f1()
+
+            if command in commands:
+                for func in commands[command]:
+                    func()
             else:
                 log(f"Unknown command: {command}", 'ERROR')
                 log("See --help for available commands.", 'INFO')
