@@ -159,21 +159,13 @@ CREATE TABLE weather (
     FOREIGN KEY (session_fk) REFERENCES session(session_key)
 );
 
-CREATE TABLE pit (
-    pit_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    lap_num SMALLINT,
-    duration_s REAL,
-    session_fk SMALLINT,
-    driver_fk TEXT,
-    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
-);
-
 CREATE TABLE stint (
     stint_id INTEGER PRIMARY KEY AUTOINCREMENT,
     stint_num SMALLINT,
     tyre_compound TEXT,
     lap_num_start SMALLINT,
     lap_num_end SMALLINT,
+    pit_duration_s REAL,
     tyre_age_laps SMALLINT,
     session_fk SMALLINT,
     driver_fk TEXT,
