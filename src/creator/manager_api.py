@@ -68,7 +68,7 @@ def populate_database():
     # --- API Data Fetching ---
     # Define which endpoints can be fetched in a single bulk request vs. per meeting.
     bulk_endpoints = ['sessions', 'drivers', 'weather', 'pit', 'stints', 'team_radio', 'race_control']
-    per_meeting_endpoints = ['position', 'intervals']
+    per_meeting_endpoints = ['position', 'intervals', 'laps']
 
     # Determine the range of meeting keys for the specified year to scope the queries.
     meeting_keys = [m['meeting_key'] for m in api_data['meetings']]
@@ -223,6 +223,9 @@ def populate_database():
 
     event_data = [(ev.get('category'), ev.get('flag'), ev.get('scope'), ev.get('message'), ev.get('lap_number'), ev.get('sector'), format_timestamp(ev.get('date'), 'int'), ev.get('session_key'), session_driver_map.get((ev.get('session_key'), ev.get('driver_number')))) for ev in api_data.get('race_control', [])]
     insert_records('event', ['category', 'flag', 'scope', 'message', 'lap_num', 'sector_num', 'timestamp_utc', 'session_fk', 'driver_fk'], event_data, 'Event')
+
+    lap_data_to_insert = [(lap.get('lap_number'), lap.get('lap_duration'), lap.get('duration_sector_1'), lap.get('duration_sector_2'), lap.get('duration_sector_3'), lap.get('st_speed'), lap.get('i1_speed'), lap.get('i2_speed'), lap.get('is_pit_out_lap'), format_timestamp(lap.get('date_start'), 'real'), str(lap.get('segments_sector_1')), str(lap.get('segments_sector_2')), str(lap.get('segments_sector_3')), lap.get('session_key'), session_driver_map.get((lap.get('session_key'), lap.get('driver_number')))) for lap in api_data.get('laps', []) if session_driver_map.get((lap.get('session_key'), lap.get('driver_number')))]
+    insert_records('lap', ['lap_number', 'lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'st_speed', 'i1_speed', 'i2_speed', 'is_pit_out_lap', 'timestamp_utc', 'segments_sector_1', 'segments_sector_2', 'segments_sector_3', 'session_fk', 'driver_fk'], lap_data_to_insert, 'Lap')
 
     log("Database processing and insertion complete.", 'SUCCESS') # New success message
 

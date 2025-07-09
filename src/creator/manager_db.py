@@ -213,4 +213,24 @@ CREATE TABLE interval (
     driver_fk TEXT,
     FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
 );
+
+CREATE TABLE lap (
+    lap_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lap_number SMALLINT,
+    lap_duration REAL,
+    duration_sector_1 REAL,
+    duration_sector_2 REAL,
+    duration_sector_3 REAL,
+    st_speed SMALLINT,
+    i1_speed SMALLINT,
+    i2_speed SMALLINT,
+    is_pit_out_lap BOOLEAN,
+    timestamp_utc TEXT,
+    segments_sector_1 TEXT,
+    segments_sector_2 TEXT,
+    segments_sector_3 TEXT,
+    session_fk SMALLINT,
+    driver_fk TEXT,
+    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
+);
 """
