@@ -75,7 +75,6 @@ def populate_database():
     min_meeting_key = min(meeting_keys)
     max_meeting_key = max(meeting_keys)
 
-    # Fetch all data that can be queried by meeting_key range
     for endpoint in bulk_endpoints:
         start_time_endpoint = time.time()
         params = {'meeting_key': [min_meeting_key, max_meeting_key]}
@@ -85,7 +84,6 @@ def populate_database():
             api_data[endpoint] = []
         show_progress_bar(1, 1, prefix_text=f'API | {endpoint.capitalize():<12} | 1', start_time=start_time_endpoint)
 
-    # Fetch endpoints that must be queried for each meeting individually
     for endpoint in per_meeting_endpoints:
         api_data[endpoint] = []
         endpoint_fetch_start_time = time.time()
@@ -106,6 +104,7 @@ def populate_database():
         if no_data_meetings:
             log(f"No data returned for {endpoint.capitalize()} with params: {', '.join(no_data_meetings)}", 'INFO')
 
+    log("API data fetching complete.", 'SUCCESS') # New success message
 
     # --- Database Processing & Insertion ---
     log("Processing and inserting data into database", 'SUBHEADING')
@@ -224,6 +223,8 @@ def populate_database():
 
     event_data = [(ev.get('category'), ev.get('flag'), ev.get('scope'), ev.get('message'), ev.get('lap_number'), ev.get('sector'), format_timestamp(ev.get('date'), 'int'), ev.get('session_key'), session_driver_map.get((ev.get('session_key'), ev.get('driver_number')))) for ev in api_data.get('race_control', [])]
     insert_records('event', ['category', 'flag', 'scope', 'message', 'lap_num', 'sector_num', 'timestamp_utc', 'session_fk', 'driver_fk'], event_data, 'Event')
+
+    log("Database processing and insertion complete.", 'SUCCESS') # New success message
 
     # --- Finalization ---
     conn.close()

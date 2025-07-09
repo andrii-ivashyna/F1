@@ -49,13 +49,13 @@ def main():
                 sys.exit(1)
         else:
             # Default: run full process
-            start_time, start_datetime = time.time(), datetime.now()
+            start_datetime = datetime.now()
             
             log("Start Data Fetching and Enrichment Process", 'HEADING')
             create_database()
             populate_database()
             manager_parse.run_all_parsers()
-            show_completion_summary(start_time, start_datetime)
+            show_completion_summary(start_datetime)
         
     except Exception as e:
         log(f"An unexpected error occurred during the process", 'ERROR', data={'error': str(e)})
