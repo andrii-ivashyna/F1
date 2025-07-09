@@ -119,30 +119,21 @@ CREATE TABLE team (
 CREATE TABLE driver (
     driver_code TEXT PRIMARY KEY,
     driver_name TEXT,
-    driver_number SMALLINT,
     country_fk TEXT,
     driver_image_url TEXT,
     number_image_url TEXT,
     FOREIGN KEY (country_fk) REFERENCES country(country_code)
 );
 
-CREATE TABLE meeting_driver (
-    meeting_fk SMALLINT,
-    driver_fk TEXT,
-    team_fk INTEGER,
-    driver_number SMALLINT,
-    PRIMARY KEY (meeting_fk, driver_fk),
-    FOREIGN KEY (meeting_fk) REFERENCES meeting(meeting_key),
-    FOREIGN KEY (driver_fk) REFERENCES driver(driver_code),
-    FOREIGN KEY (team_fk) REFERENCES team(team_id)
-);
-
 CREATE TABLE session_driver (
     session_fk SMALLINT,
     driver_fk TEXT,
+    team_fk INTEGER,
+    driver_number SMALLINT,
     PRIMARY KEY (session_fk, driver_fk),
     FOREIGN KEY (session_fk) REFERENCES session(session_key),
-    FOREIGN KEY (driver_fk) REFERENCES driver(driver_code)
+    FOREIGN KEY (driver_fk) REFERENCES driver(driver_code),
+    FOREIGN KEY (team_fk) REFERENCES team(team_id)
 );
 
 CREATE TABLE weather (
