@@ -4,17 +4,16 @@ Main application runner for the Formula 1 data fetching and enrichment process.
 Handles command-line arguments and orchestrates the data pipeline.
 """
 
+# --- DEPENDENCIES ---
+# Before running, please install the required libraries:
+# pip install requests beautifulsoup4 pandas pycountry lxml
+
 import sys
-import time
 from datetime import datetime
 import manager_parse
 from config import log, show_completion_summary
 from manager_db import create_database
 from manager_api import populate_database
-
-# --- IMPORTANT ---
-# Before running, please install the required libraries:
-# pip install requests beautifulsoup4 pandas pycountry lxml
 
 def main():
     """
