@@ -194,4 +194,23 @@ CREATE TABLE event (
     driver_fk TEXT,
     FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
 );
+
+CREATE TABLE position (
+    position_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    position SMALLINT,
+    timestamp_utc TEXT,
+    session_fk SMALLINT,
+    driver_fk TEXT,
+    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
+);
+
+CREATE TABLE interval (
+    interval_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gap_to_leader TEXT,
+    interval TEXT,
+    timestamp_utc TEXT,
+    session_fk SMALLINT,
+    driver_fk TEXT,
+    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
+);
 """
