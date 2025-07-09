@@ -1,6 +1,6 @@
 # manager_db.py
 """
-Database management utilities including schema creation and helper functions.
+Database management utilities including schema creation and helper functions
 """
 
 import os
@@ -11,8 +11,8 @@ from config import DB_FILE, log, show_progress_bar
 
 def format_timestamp(timestamp_str, precision='int'):
     """
-    Formats a timestamp string to a specified precision for database storage.
-    'int' for ISO-MM-DDTHH:MM:SS (length 19), 'real' for ISO-MM-DDTHH:MM:SS.sss (length 23).
+    Formats a timestamp string to a specified precision for database storage
+    'int' for ISO-MM-DDTHH:MM:SS (length 19), 'real' for ISO-MM-DDTHH:MM:SS.sss (length 23)
     """
     if not isinstance(timestamp_str, str):
         return timestamp_str
@@ -220,6 +220,31 @@ CREATE TABLE lap (
     segments_sector_1 TEXT,
     segments_sector_2 TEXT,
     segments_sector_3 TEXT,
+    session_fk SMALLINT,
+    driver_fk TEXT,
+    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
+);
+
+CREATE TABLE car (
+    car_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rpm SMALLINT,
+    speed SMALLINT,
+    n_gear SMALLINT,
+    throttle SMALLINT,
+    brake SMALLINT,
+    drs SMALLINT,
+    timestamp_utc TEXT,
+    session_fk SMALLINT,
+    driver_fk TEXT,
+    FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)
+);
+
+CREATE TABLE loc (
+    loc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    x SMALLINT,
+    y SMALLINT,
+    z SMALLINT,
+    timestamp_utc TEXT,
     session_fk SMALLINT,
     driver_fk TEXT,
     FOREIGN KEY (session_fk, driver_fk) REFERENCES session_driver(session_fk, driver_fk)

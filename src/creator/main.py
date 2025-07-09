@@ -1,7 +1,7 @@
 # main.py
 """
-Main application runner for the Formula 1 data fetching and enrichment process.
-Handles command-line arguments and orchestrates the data pipeline.
+Main application runner for the Formula 1 data fetching and enrichment process
+Handles command-line arguments and orchestrates the data pipeline
 """
 
 # --- DEPENDENCIES ---
@@ -17,8 +17,8 @@ from manager_api import populate_database
 
 def main():
     """
-    Main function to run the full data fetching and enrichment process.
-    Provides command-line arguments to run specific parts of the process.
+    Main function to run the full data fetching and enrichment process
+    Provides command-line arguments to run specific parts of the process
     """
     commands = {
         'api': [create_database, populate_database],

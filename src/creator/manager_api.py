@@ -1,6 +1,6 @@
 # manager_api.py
 """
-API client for fetching Formula 1 data from OpenF1 API and populating the database.
+API client for fetching Formula 1 data from OpenF1 API and populating the database
 """
 
 import sqlite3
@@ -13,7 +13,7 @@ from manager_db import format_timestamp, format_gmt_offset, get_country_code
 
 def get_api_data_bulk(endpoint, params=None, max_tries=5):
     """
-    Fetches data from an API endpoint with a retry mechanism.
+    Fetches data from an API endpoint with a retry mechanism
     This function does NOT display a progress bar; progress is handled by the caller.
     Params must be a dictionary.
     - If a value is a single item (e.g., {'key': value}), it forms 'key=value'.
@@ -52,7 +52,7 @@ def get_api_data_bulk(endpoint, params=None, max_tries=5):
 
 def populate_database():
     """
-    Coordinates the fetching of all F1 data for a given year and populates the database.
+    Coordinates the fetching of all F1 data for a given year and populates the database
     """
     log("Fetching data from OpenF1 API", 'SUBHEADING')
     api_data = {}
@@ -62,15 +62,16 @@ def populate_database():
     start_time_meetings = time.time()
     api_data['meetings'] = get_api_data_bulk('meetings', {'year': config.YEAR})
     if not api_data.get('meetings'):
-        return log("Halting process: could not fetch meetings data. Check the configured YEAR.", 'ERROR')
+        return log("Halting process: could not fetch meetings data. Check the configured YEAR", 'ERROR')
     show_progress_bar(1, 1, prefix_text=f'API | Meetings | 1', start_time=start_time_meetings)
 
     # --- API Data Fetching ---
     # Define which endpoints can be fetched in a single bulk request vs. per meeting
     bulk_endpoints_ordered = ['sessions', 'drivers', 'pit', 'stints', 'weather', 'race_control', 'team_radio']
     per_meeting_endpoints_ordered = ['position', 'laps', 'intervals']
+    per_session_driver_endpoints = ['car_data', 'location']
 
-    # Determine the range of meeting keys for the specified year to scope the queries.
+    # Determine the range of meeting keys for the specified year to scope the queries
     meeting_keys = [m['meeting_key'] for m in api_data['meetings']]
     min_meeting_key = min(meeting_keys)
     max_meeting_key = max(meeting_keys)
@@ -80,7 +81,7 @@ def populate_database():
         params = {'meeting_key': [min_meeting_key, max_meeting_key]}
         api_data[endpoint] = get_api_data_bulk(endpoint, params)
         if api_data[endpoint] is None:
-            log(f"Could not fetch {endpoint} data. This section will be skipped.", 'WARNING')
+            log(f"Could not fetch {endpoint} data. This section will be skipped", 'WARNING')
             api_data[endpoint] = []
         show_progress_bar(1, 1, prefix_text=f'API | {endpoint.capitalize():<12} | 1', start_time=start_time_endpoint)
 
@@ -90,7 +91,7 @@ def populate_database():
         no_data_meetings = []
         
         if not meeting_keys:
-            log(f"No meetings found to fetch {endpoint.capitalize()} data.", 'INFO')
+            log(f"No meetings found to fetch {endpoint.capitalize()} data", 'INFO')
             continue
 
         for i, meeting_key in enumerate(meeting_keys):
@@ -104,7 +105,7 @@ def populate_database():
         if no_data_meetings:
             log(f"No data returned for {endpoint.capitalize()} with params: {', '.join(no_data_meetings)}", 'INFO')
 
-    log("API data fetching complete.", 'SUCCESS') # New success message
+    log("API data fetching complete", 'SUCCESS') # New success message
 
     # --- Database Processing & Insertion ---
     log("Processing and inserting data into database", 'SUBHEADING')
@@ -112,9 +113,9 @@ def populate_database():
     cursor = conn.cursor()
 
     def insert_records(table, columns, data, msg_prefix):
-        """Helper function to bulk insert records into a specified table."""
+        """Helper function to bulk insert records into a specified table"""
         if not data:
-            log(f"Skipping DB insert for {msg_prefix} as no data was provided.", 'WARNING')
+            log(f"Skipping DB insert for {msg_prefix} as no data was provided", 'WARNING')
             return
         start_time = time.time()
         cols_str = ', '.join(columns)
@@ -245,7 +246,59 @@ def populate_database():
     interval_to_insert = [(i.get('gap_to_leader'), i.get('interval'), format_timestamp(i.get('date'), 'real'), i.get('session_key'), session_driver_map.get((i.get('session_key'), i.get('driver_number')))) for i in api_data.get('intervals', []) if session_driver_map.get((i.get('session_key'), i.get('driver_number')))]
     insert_records('interval', ['gap_to_leader', 'interval', 'timestamp_utc', 'session_fk', 'driver_fk'], interval_to_insert, 'Interval')
 
-    log("Database processing and insertion complete.", 'SUCCESS') # New success message
+    # --- Fetching per session_driver for large datasets (Car Data, Location) ---
+    log("Fetching large datasets per session and driver", 'SUBHEADING')
+    
+    # Retrieve all session-driver combinations from the session_driver table
+    cursor.execute("SELECT session_fk, driver_fk, driver_number FROM session_driver ORDER BY session_fk DESC") # Order by session_fk descending
+    session_driver_combinations = cursor.fetchall()
+
+    # Limit to the last 3 sessions for testing purposes
+    limited_session_driver_combinations = []
+    processed_sessions_count = 0
+    last_session_fk = None
+
+    for session_fk, driver_fk, driver_number in session_driver_combinations:
+        if last_session_fk is None or session_fk != last_session_fk:
+            if processed_sessions_count >= 3:
+                break
+            processed_sessions_count += 1
+            last_session_fk = session_fk
+        limited_session_driver_combinations.append((session_fk, driver_fk, driver_number))
+    
+    total_combinations = len(limited_session_driver_combinations)
+
+    for endpoint in per_session_driver_endpoints:
+        all_endpoint_data = []
+        endpoint_fetch_start_time = time.time()
+
+        for i, (session_fk, driver_fk, driver_number) in enumerate(limited_session_driver_combinations):
+            params = {'session_key': session_fk, 'driver_number': driver_number}
+            data = get_api_data_bulk(endpoint, params)
+            if data:
+                # Add session_fk and driver_fk to each record
+                for record in data:
+                    record['session_fk'] = session_fk
+                    record['driver_fk'] = driver_fk
+                all_endpoint_data.extend(data)
+            
+            show_progress_bar(i + 1, total_combinations, prefix_text=f'API | {endpoint.capitalize():<12} | {total_combinations}', start_time=endpoint_fetch_start_time)
+        
+        if endpoint == 'car_data':
+            car_data_to_insert = [(
+                c.get('rpm'), c.get('speed'), c.get('n_gear'), c.get('throttle'),
+                c.get('brake'), c.get('drs'), format_timestamp(c.get('date'), 'real'),
+                c.get('session_fk'), c.get('driver_fk')
+            ) for c in all_endpoint_data]
+            insert_records('car', ['rpm', 'speed', 'n_gear', 'throttle', 'brake', 'drs', 'timestamp_utc', 'session_fk', 'driver_fk'], car_data_to_insert, 'Car Data')
+        elif endpoint == 'location':
+            loc_data_to_insert = [(
+                l.get('x'), l.get('y'), l.get('z'), format_timestamp(l.get('date'), 'real'),
+                l.get('session_fk'), l.get('driver_fk')
+            ) for l in all_endpoint_data]
+            insert_records('loc', ['x', 'y', 'z', 'timestamp_utc', 'session_fk', 'driver_fk'], loc_data_to_insert, 'Location Data')
+
+    log("Database processing and insertion complete", 'SUCCESS')
 
     # --- Finalization ---
     conn.close()
